@@ -1,6 +1,7 @@
 // MCP Client for communicating with Taskinfa MCP Server
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { CallToolResult, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type {
   Task,
   ListTasksRequest,
@@ -44,42 +45,48 @@ export class TaskinfaMCPClient {
   async listTasks(params: ListTasksRequest): Promise<{ tasks: Task[]; total: number }> {
     const result = await this.client.callTool({
       name: 'list_tasks',
-      arguments: params,
+      arguments: params as unknown as Record<string, unknown>,
     });
 
     if (result.isError) {
-      throw new Error(`Failed to list tasks: ${result.content[0]?.text}`);
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to list tasks: ${content[0]?.text}`);
     }
 
-    const data = JSON.parse(result.content[0]?.text || '{}');
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
     return data;
   }
 
   async getTask(taskId: string): Promise<Task> {
     const result = await this.client.callTool({
       name: 'get_task',
-      arguments: { id: taskId } satisfies GetTaskRequest,
+      arguments: { id: taskId } as Record<string, unknown>,
     });
 
     if (result.isError) {
-      throw new Error(`Failed to get task: ${result.content[0]?.text}`);
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to get task: ${content[0]?.text}`);
     }
 
-    const data = JSON.parse(result.content[0]?.text || '{}');
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
     return data.task;
   }
 
   async updateTaskStatus(params: UpdateTaskStatusRequest): Promise<Task> {
     const result = await this.client.callTool({
       name: 'update_task_status',
-      arguments: params,
+      arguments: params as unknown as Record<string, unknown>,
     });
 
     if (result.isError) {
-      throw new Error(`Failed to update task: ${result.content[0]?.text}`);
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to update task: ${content[0]?.text}`);
     }
 
-    const data = JSON.parse(result.content[0]?.text || '{}');
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
     return data.task;
   }
 }
