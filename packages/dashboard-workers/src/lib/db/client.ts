@@ -1,6 +1,8 @@
 // D1 Database Client
 // This module provides a simple interface to Cloudflare D1 database
 
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
 export interface D1Database {
   prepare(query: string): D1PreparedStatement;
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<T[]>;
@@ -26,14 +28,23 @@ export interface D1ExecResult {
   duration: number;
 }
 
-// Get D1 database instance from environment
+// Get D1 database instance from Cloudflare context
 export function getDb(): D1Database {
-  // In Cloudflare Workers/Pages, access via process.env
-  const env = process.env as any;
-  if (!env.DB) {
-    throw new Error('D1 database binding not found. Make sure DB is configured in wrangler.toml');
+  try {
+    // In Cloudflare Workers with OpenNext, access via context
+    const context = getCloudflareContext();
+    const env = context?.env as any;
+    const db = env?.DB as D1Database;
+
+    if (!db) {
+      throw new Error('D1 database binding not found. Make sure DB is configured in wrangler.jsonc');
+    }
+
+    return db;
+  } catch (error) {
+    console.error('Error accessing D1 database:', error);
+    throw new Error('Failed to get D1 database instance');
   }
-  return env.DB;
 }
 
 // Helper to execute a query and return results

@@ -22,5 +22,13 @@
   // Environment variables
   "vars": {
     "NEXTJS_ENV": "production"
+  },
+
+  // Observability and logging
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
   }
 }
