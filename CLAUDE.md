@@ -188,17 +188,159 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 
 ## Deployment
 
-### Before Deploying
-- Test in local environment
-- Run all builds successfully
-- Update environment variables
-- Check database migrations
+### ⚠️ IMPORTANT: We Deploy to Cloudflare Workers (NOT Pages)
 
-### Cloudflare Pages
-- Build with `npm run build`
-- Test D1 connections
-- Verify environment variables
-- Check for CORS issues
+**DO NOT USE:** `wrangler pages deploy` ❌
+**ALWAYS USE:** `wrangler deploy` ✅
+
+We deploy directly to **Cloudflare Workers** at:
+- **Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev
+
+### Deployment Architecture
+
+```
+Next.js App → OpenNext.js Build → Cloudflare Workers
+             (@cloudflare/next-on-pages)
+```
+
+**Key Components:**
+- **Worker Script:** `.vercel/output/static/_worker.js/index.js` (main entry point)
+- **Static Assets:** `.vercel/output/static/` (served via ASSETS binding)
+- **Database:** D1 (bound as "DB")
+
+### Build & Deploy Process
+
+**Step 1: Build with OpenNext.js**
+```bash
+cd packages/dashboard
+npx @cloudflare/next-on-pages
+```
+
+This creates:
+- Worker code at `.vercel/output/static/_worker.js/`
+- Static assets in `.vercel/output/static/`
+
+**Step 2: Deploy to Workers**
+```bash
+npx wrangler deploy
+```
+
+**DO NOT run:** `wrangler pages deploy` (deploys to Pages, not Workers)
+
+### wrangler.toml Configuration
+
+**Correct Configuration for Workers:**
+```toml
+name = "taskinfa-kanban"
+main = ".vercel/output/static/_worker.js/index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ASSETS binding for static files
+[assets]
+directory = ".vercel/output/static"
+binding = "ASSETS"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-db"
+database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
+```
+
+**Key Points:**
+- `main` = Worker entry point (required for Workers deployment)
+- `[assets]` = ASSETS binding (static files served by worker)
+- NO `pages_build_output_dir` (that's for Pages, not Workers)
+
+### .assetsignore File
+
+Create `.vercel/output/static/.assetsignore` to exclude worker code from assets:
+```
+_worker.js
+_worker.js/*
+```
+
+### Environment Variables
+
+Set in Cloudflare Workers dashboard (not Pages):
+1. Go to Workers & Pages → taskinfa-kanban → Settings → Variables
+2. Add environment variables:
+   - `JWT_SECRET` (required)
+   - `SESSION_SECRET` (required)
+   - `BCRYPT_ROUNDS` (optional, defaults to 12)
+   - `SESSION_MAX_AGE` (optional, defaults to 604800)
+
+### Database Migrations
+
+**Local Database:**
+```bash
+npx wrangler d1 execute taskinfa-kanban-db --local \
+  --file=./migrations/003_add_users.sql
+```
+
+**Production Database:**
+```bash
+npx wrangler d1 execute taskinfa-kanban-db --remote \
+  --file=./migrations/003_add_users.sql
+```
+
+### Deployment Checklist
+
+**Before Deploying:**
+- [ ] Test in local environment with `npm run dev`
+- [ ] Build successfully with `npx @cloudflare/next-on-pages`
+- [ ] Run database migrations (if needed)
+- [ ] Verify environment variables are set in Workers dashboard
+- [ ] Check `.assetsignore` exists in `.vercel/output/static/`
+
+**Deploy:**
+```bash
+# Build
+npx @cloudflare/next-on-pages
+
+# Deploy to Workers (NOT Pages!)
+npx wrangler deploy
+```
+
+**Verify:**
+- [ ] Visit https://taskinfa-kanban.secan-ltd.workers.dev
+- [ ] Check bindings in Workers dashboard (ASSETS + DB)
+- [ ] Test signup/login functionality
+- [ ] Test API endpoints
+
+### Common Mistakes to Avoid
+
+❌ **WRONG:** Using `wrangler pages deploy`
+- This deploys to Cloudflare Pages (*.pages.dev URLs)
+- Creates a separate Pages project
+- Doesn't use your Workers configuration
+
+✅ **CORRECT:** Using `wrangler deploy`
+- Deploys to Cloudflare Workers (*.workers.dev URL)
+- Uses bindings from wrangler.toml (ASSETS + D1)
+- Matches your production environment
+
+❌ **WRONG:** Adding `pages_build_output_dir` to wrangler.toml
+- Makes wrangler think this is a Pages project
+
+✅ **CORRECT:** Using `main` and `[assets]` in wrangler.toml
+- Configures proper Workers deployment with ASSETS binding
+
+### Troubleshooting
+
+**Error: "It looks like you've run a Workers-specific command in a Pages project"**
+- Check wrangler.toml has `main` (not `pages_build_output_dir`)
+- Remove any Pages-specific configuration
+
+**Error: "Uploading a Pages _worker.js directory as an asset"**
+- Create `.assetsignore` file in `.vercel/output/static/`
+- Add `_worker.js` and `_worker.js/*` to ignore list
+
+**Bindings not working:**
+- Verify `[assets]` section exists in wrangler.toml
+- Check D1 database ID matches production database
+- Confirm environment variables are set in Workers dashboard (not Pages)
 
 ## Repository Conventions
 
@@ -230,6 +372,7 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 
 ---
 
-**Last Updated:** January 26, 2025
+**Last Updated:** January 27, 2026
 **Project:** Taskinfa-Bot
 **Repository:** https://github.com/secanltd/taskinfa-kanban
+**Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev

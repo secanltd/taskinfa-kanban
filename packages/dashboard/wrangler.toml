@@ -1,16 +1,15 @@
 name = "taskinfa-kanban"
+main = ".vercel/output/static/_worker.js/index.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-pages_build_output_dir = ".vercel/output/static"
+# Assets binding for static files (images, CSS, JS)
+[assets]
+directory = ".vercel/output/static"
+binding = "ASSETS"
 
+# D1 Database binding
 [[d1_databases]]
-binding = "DB"
-database_name = "taskinfa-kanban-db"
-database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
-
-[env.production]
-[[env.production.d1_databases]]
 binding = "DB"
 database_name = "taskinfa-kanban-db"
 database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
