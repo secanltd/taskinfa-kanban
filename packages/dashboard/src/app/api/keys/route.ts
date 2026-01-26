@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, query } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
 import { generateApiKey } from '@/lib/auth/jwt';
+import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { CreateApiKeyRequest, CreateApiKeyResponse, ListApiKeysResponse, ApiKey } from '@taskinfa/shared';
 
 // GET /api/keys - List user's API keys
@@ -55,6 +56,12 @@ export async function GET(request: NextRequest) {
 
 // POST /api/keys - Generate new API key
 export async function POST(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, 'api-key-create', RATE_LIMITS.API_KEY_CREATE);
+  if (!rateLimit.allowed) {
+    return createRateLimitResponse(rateLimit.resetAt);
+  }
+
   try {
     // Verify session authentication
     const session = await requireAuth(request);

@@ -3,9 +3,16 @@ import { getDb, execute, queryOne } from '@/lib/db/client';
 import { verifyPassword } from '@/lib/auth/password';
 import { normalizeEmail } from '@/lib/validations/auth';
 import { createSession, setSessionCookie } from '@/lib/auth/session';
+import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { LoginRequest, LoginResponse, User, Workspace } from '@taskinfa/shared';
 
 export async function POST(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, 'login', RATE_LIMITS.LOGIN);
+  if (!rateLimit.allowed) {
+    return createRateLimitResponse(rateLimit.resetAt);
+  }
+
   try {
     const body: LoginRequest = await request.json();
     const { email, password } = body;
