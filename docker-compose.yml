@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  bot-john:
+    build:
+      context: .
+      dockerfile: packages/bot/Dockerfile
+    container_name: taskinfa-bot-john
+    environment:
+      - BOT_NAME=Bot-John
+      - WORKSPACE_ID=${WORKSPACE_ID:-default}
+      - DASHBOARD_URL=${DASHBOARD_URL}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      # Workspace for bot operations
+      - ./workspace-john:/workspace
+      # Mount Claude config (read-only)
+      - ~/.claude:/home/botuser/.claude:ro
+    restart: unless-stopped
+    # Required for firewall operations (optional, remove if not using iptables)
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - taskinfa-net
+
+  # Additional bot example (disabled by default)
+  # Enable with: docker-compose --profile multi-bot up
+  bot-gordon:
+    profiles: ["multi-bot"]
+    build:
+      context: .
+      dockerfile: packages/bot/Dockerfile
+    container_name: taskinfa-bot-gordon
+    environment:
+      - BOT_NAME=Bot-Gordon
+      - WORKSPACE_ID=${WORKSPACE_ID:-default}
+      - DASHBOARD_URL=${DASHBOARD_URL}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./workspace-gordon:/workspace
+      - ~/.claude:/home/botuser/.claude:ro
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - taskinfa-net
+
+  bot-smith:
+    profiles: ["multi-bot"]
+    build:
+      context: .
+      dockerfile: packages/bot/Dockerfile
+    container_name: taskinfa-bot-smith
+    environment:
+      - BOT_NAME=Bot-Smith
+      - WORKSPACE_ID=${WORKSPACE_ID:-default}
+      - DASHBOARD_URL=${DASHBOARD_URL}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./workspace-smith:/workspace
+      - ~/.claude:/home/botuser/.claude:ro
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - taskinfa-net
+
+networks:
+  taskinfa-net:
+    driver: bridge

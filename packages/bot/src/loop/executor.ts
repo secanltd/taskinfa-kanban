@@ -8,6 +8,7 @@ import chalk from 'chalk';
 
 export interface ExecutorConfig {
   workspaceId: string;
+  botName: string;
   mcpServerCommand: string;
   mcpServerArgs?: string[];
   workingDir?: string;
@@ -33,7 +34,7 @@ export class TaskExecutor {
   }
 
   async start(): Promise<void> {
-    console.log(chalk.blue('Starting Taskinfa Bot...'));
+    console.log(chalk.blue(`Starting Taskinfa Bot: ${this.config.botName}...`));
     console.log(chalk.gray(`Workspace: ${this.config.workspaceId}`));
     console.log(chalk.gray(`Max loops per task: ${this.config.maxLoops}`));
     console.log();
@@ -61,13 +62,44 @@ export class TaskExecutor {
   private async fetchNextTask(): Promise<Task | null> {
     console.log(chalk.blue('Fetching next task...'));
 
+    // Fetch unassigned tasks
     const { tasks } = await this.mcpClient.listTasks({
       workspace_id: this.config.workspaceId,
       status: 'todo',
+      assigned_to: null,
       limit: 1,
     });
 
-    return tasks[0] || null;
+    if (tasks.length === 0) {
+      return null;
+    }
+
+    const task = tasks[0];
+
+    // Attempt to atomically claim the task
+    console.log(chalk.gray(`Attempting to claim task: ${task.title}`));
+    const claimResult = await this.mcpClient.claimTask({
+      task_id: task.id,
+      bot_name: this.config.botName,
+    });
+
+    if (!claimResult.success) {
+      console.log(chalk.yellow(`Failed to claim task: ${claimResult.message}`));
+      // Another bot claimed it, try again
+      return this.fetchNextTask();
+    }
+
+    // Add initial comment
+    await this.mcpClient.addComment({
+      task_id: task.id,
+      author: this.config.botName,
+      author_type: 'bot',
+      content: `${this.config.botName} has started working on this task`,
+      comment_type: 'progress',
+    });
+
+    console.log(chalk.green(`Successfully claimed task: ${task.title}`));
+    return claimResult.task || task;
   }
 
   private async executeTask(task: Task): Promise<void> {
@@ -75,16 +107,11 @@ export class TaskExecutor {
     console.log(chalk.green.bold(`Executing Task: ${task.title}`));
     console.log(chalk.gray(`ID: ${task.id}`));
     console.log(chalk.gray(`Priority: ${task.priority}`));
+    console.log(chalk.gray(`Assigned to: ${this.config.botName}`));
     if (task.description) {
       console.log(chalk.gray(`Description: ${task.description}`));
     }
     console.log();
-
-    // Update status to in_progress
-    await this.mcpClient.updateTaskStatus({
-      id: task.id,
-      status: 'in_progress',
-    });
 
     const context: ExecutionContext = {
       task,
@@ -104,9 +131,30 @@ export class TaskExecutor {
 
       console.log(chalk.cyan(`\n--- Loop ${context.loopCount}/${this.config.maxLoops} ---`));
 
+      // Add loop start comment
+      if (context.loopCount % 5 === 1 || context.loopCount === 1) {
+        // Comment every 5 loops or first loop
+        await this.mcpClient.addComment({
+          task_id: task.id,
+          author: this.config.botName,
+          author_type: 'bot',
+          content: `Starting loop ${context.loopCount}`,
+          comment_type: 'progress',
+          loop_number: context.loopCount,
+        });
+      }
+
       // Check circuit breaker
       if (this.shouldBreakCircuit(context)) {
         console.log(chalk.red('Circuit breaker activated: no progress detected'));
+        await this.mcpClient.addComment({
+          task_id: task.id,
+          author: this.config.botName,
+          author_type: 'bot',
+          content: `Circuit breaker activated: No progress detected after ${context.loopCount} loops`,
+          comment_type: 'error',
+          loop_number: context.loopCount,
+        });
         await this.completeTask(task, context, 'Circuit breaker: No progress after multiple loops');
         return;
       }
@@ -129,6 +177,17 @@ export class TaskExecutor {
         // Update progress indicator
         if (context.filesChanged.size > previousFileCount) {
           context.lastProgress = context.loopCount;
+
+          // Add progress comment when files are modified
+          const newFiles = output.filesModified;
+          await this.mcpClient.addComment({
+            task_id: task.id,
+            author: this.config.botName,
+            author_type: 'bot',
+            content: `Modified ${newFiles.length} file(s): ${newFiles.slice(0, 3).join(', ')}${newFiles.length > 3 ? '...' : ''}`,
+            comment_type: 'progress',
+            loop_number: context.loopCount,
+          });
         }
 
         // Accumulate completion indicators
@@ -142,6 +201,17 @@ export class TaskExecutor {
         // Ralph-style dual-condition exit detection
         if (this.shouldExit(completionIndicatorsTotal, hasExitSignal)) {
           console.log(chalk.green.bold('\n✓ Task completed successfully!'));
+
+          // Add completion summary comment
+          await this.mcpClient.addComment({
+            task_id: task.id,
+            author: this.config.botName,
+            author_type: 'bot',
+            content: `Task completed successfully! Total loops: ${context.loopCount}, Files changed: ${context.filesChanged.size}`,
+            comment_type: 'summary',
+            loop_number: context.loopCount,
+          });
+
           await this.completeTask(
             task,
             context,
@@ -155,8 +225,26 @@ export class TaskExecutor {
           context.errorCount += output.errors.length;
           console.log(chalk.yellow(`Errors encountered: ${output.errors.length}`));
 
+          // Add error comment
+          await this.mcpClient.addComment({
+            task_id: task.id,
+            author: this.config.botName,
+            author_type: 'bot',
+            content: `Encountered ${output.errors.length} error(s): ${output.errors[0] || 'Unknown error'}`,
+            comment_type: 'error',
+            loop_number: context.loopCount,
+          });
+
           if (context.errorCount >= this.config.circuitBreakerThreshold!) {
             console.log(chalk.red('Circuit breaker: Too many errors'));
+            await this.mcpClient.addComment({
+              task_id: task.id,
+              author: this.config.botName,
+              author_type: 'bot',
+              content: `Circuit breaker: Error threshold exceeded (${context.errorCount} errors)`,
+              comment_type: 'error',
+              loop_number: context.loopCount,
+            });
             await this.completeTask(task, context, 'Circuit breaker: Error threshold exceeded');
             return;
           }
@@ -165,8 +253,26 @@ export class TaskExecutor {
         context.errorCount++;
         console.error(chalk.red('Error during execution:'), error);
 
+        // Add execution error comment
+        await this.mcpClient.addComment({
+          task_id: task.id,
+          author: this.config.botName,
+          author_type: 'bot',
+          content: `Execution error: ${error instanceof Error ? error.message : String(error)}`,
+          comment_type: 'error',
+          loop_number: context.loopCount,
+        });
+
         if (context.errorCount >= this.config.circuitBreakerThreshold!) {
           console.log(chalk.red('Circuit breaker: Too many execution errors'));
+          await this.mcpClient.addComment({
+            task_id: task.id,
+            author: this.config.botName,
+            author_type: 'bot',
+            content: `Circuit breaker: Too many execution errors (${context.errorCount} errors)`,
+            comment_type: 'error',
+            loop_number: context.loopCount,
+          });
           await this.completeTask(
             task,
             context,
@@ -179,6 +285,14 @@ export class TaskExecutor {
 
     // Max loops reached
     console.log(chalk.yellow('\nMax loops reached without completion'));
+    await this.mcpClient.addComment({
+      task_id: task.id,
+      author: this.config.botName,
+      author_type: 'bot',
+      content: `Max loops (${this.config.maxLoops}) reached without completion. Files changed: ${context.filesChanged.size}`,
+      comment_type: 'summary',
+      loop_number: context.loopCount,
+    });
     await this.completeTask(task, context, 'Max loops reached without clear completion signal');
   }
 

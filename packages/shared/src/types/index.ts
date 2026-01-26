@@ -2,6 +2,8 @@
 
 export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type CommentType = 'progress' | 'question' | 'summary' | 'error';
+export type AuthorType = 'bot' | 'user';
 
 export interface Workspace {
   id: string;
@@ -20,6 +22,7 @@ export interface Task {
   priority: TaskPriority;
   labels: string[]; // JSON array
   assignee: string | null;
+  assigned_to: string | null; // Bot name that claimed this task
 
   // Execution metadata
   loop_count: number;
@@ -44,12 +47,24 @@ export interface ApiKey {
   expires_at: string | null;
 }
 
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author: string;
+  author_type: AuthorType;
+  content: string;
+  comment_type: CommentType;
+  loop_number: number | null;
+  created_at: string;
+}
+
 // API request/response types
 
 export interface ListTasksRequest {
   workspace_id?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
+  assigned_to?: string | null;
   limit?: number;
 }
 
@@ -73,6 +88,7 @@ export interface UpdateTaskStatusRequest {
   files_changed?: string[];
   error_count?: number;
   loop_count?: number;
+  assigned_to?: string;
 }
 
 export interface UpdateTaskStatusResponse {
@@ -91,11 +107,49 @@ export interface CreateTaskResponse {
   task: Task;
 }
 
+// Comment request/response types
+
+export interface AddTaskCommentRequest {
+  task_id: string;
+  author: string;
+  author_type: AuthorType;
+  content: string;
+  comment_type: CommentType;
+  loop_number?: number;
+}
+
+export interface AddTaskCommentResponse {
+  comment: TaskComment;
+}
+
+export interface ListTaskCommentsRequest {
+  task_id: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListTaskCommentsResponse {
+  comments: TaskComment[];
+  total: number;
+}
+
+export interface ClaimTaskRequest {
+  task_id: string;
+  bot_name: string;
+}
+
+export interface ClaimTaskResponse {
+  success: boolean;
+  task?: Task;
+  message?: string;
+}
+
 // Bot execution types
 
 export interface BotConfig {
   apiKey: string;
   workspaceId: string;
+  botName: string;
   mcpServerUrl?: string;
   restApiUrl?: string;
   maxLoops?: number;

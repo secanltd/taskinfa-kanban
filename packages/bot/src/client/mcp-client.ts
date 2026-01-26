@@ -4,9 +4,13 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { CallToolResult, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type {
   Task,
+  TaskComment,
   ListTasksRequest,
   GetTaskRequest,
   UpdateTaskStatusRequest,
+  AddTaskCommentRequest,
+  ListTaskCommentsRequest,
+  ClaimTaskRequest,
 } from '@taskinfa/shared';
 
 export class TaskinfaMCPClient {
@@ -88,5 +92,53 @@ export class TaskinfaMCPClient {
     const content = result.content as TextContent[];
     const data = JSON.parse(content[0]?.text || '{}');
     return data.task;
+  }
+
+  async addComment(params: AddTaskCommentRequest): Promise<TaskComment> {
+    const result = await this.client.callTool({
+      name: 'add_task_comment',
+      arguments: params as unknown as Record<string, unknown>,
+    });
+
+    if (result.isError) {
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to add comment: ${content[0]?.text}`);
+    }
+
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
+    return data.comment;
+  }
+
+  async listComments(params: ListTaskCommentsRequest): Promise<{ comments: TaskComment[]; total: number }> {
+    const result = await this.client.callTool({
+      name: 'list_task_comments',
+      arguments: params as unknown as Record<string, unknown>,
+    });
+
+    if (result.isError) {
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to list comments: ${content[0]?.text}`);
+    }
+
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
+    return data;
+  }
+
+  async claimTask(params: ClaimTaskRequest): Promise<{ success: boolean; task?: Task; message?: string }> {
+    const result = await this.client.callTool({
+      name: 'claim_task',
+      arguments: params as unknown as Record<string, unknown>,
+    });
+
+    if (result.isError) {
+      const content = result.content as TextContent[];
+      throw new Error(`Failed to claim task: ${content[0]?.text}`);
+    }
+
+    const content = result.content as TextContent[];
+    const data = JSON.parse(content[0]?.text || '{}');
+    return data;
   }
 }

@@ -23,6 +23,7 @@ program
   .command('run')
   .description('Start the task execution loop')
   .option('-w, --workspace <id>', 'Workspace ID', 'default')
+  .option('--name <name>', 'Bot name', 'Bot-John')
   .option('-d, --dir <path>', 'Working directory', process.cwd())
   .option('-s, --server <command>', 'MCP server command', 'node')
   .option('-a, --args <args>', 'MCP server arguments', 'packages/dashboard/dist/lib/mcp/server.js')
@@ -37,6 +38,7 @@ program
     try {
       const executor = new TaskExecutor({
         workspaceId: options.workspace,
+        botName: options.name,
         mcpServerCommand: options.server,
         mcpServerArgs: options.args.split(' '),
         workingDir: options.dir,
