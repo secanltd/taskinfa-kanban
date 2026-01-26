@@ -7,6 +7,8 @@ import { createSession, setSessionCookie } from '@/lib/auth/session';
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { SignupRequest, SignupResponse, User, Workspace } from '@taskinfa/shared';
 
+export const runtime = 'edge';
+
 export async function POST(request: NextRequest) {
   // Rate limiting
   const rateLimit = checkRateLimit(request, 'signup', RATE_LIMITS.SIGNUP);

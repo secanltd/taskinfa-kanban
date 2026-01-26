@@ -9,6 +9,7 @@ out/
 dist/
 build/
 .turbo/
+.vercel/
 
 # Environment files
 .env

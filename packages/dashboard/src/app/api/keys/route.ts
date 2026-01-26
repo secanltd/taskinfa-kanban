@@ -5,6 +5,8 @@ import { generateApiKey } from '@/lib/auth/jwt';
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { CreateApiKeyRequest, CreateApiKeyResponse, ListApiKeysResponse, ApiKey } from '@taskinfa/shared';
 
+export const runtime = 'edge';
+
 // GET /api/keys - List user's API keys
 export async function GET(request: NextRequest) {
   try {

@@ -6,6 +6,8 @@ import { authenticateRequest } from '@/lib/auth/jwt';
 import { getDb, queryOne, execute } from '@/lib/db/client';
 import type { Task, UpdateTaskStatusRequest } from '@taskinfa/shared';
 
+export const runtime = 'edge';
+
 // GET /api/tasks/[id] - Get task by ID
 export async function GET(
   request: NextRequest,

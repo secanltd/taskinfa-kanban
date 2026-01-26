@@ -3,6 +3,8 @@ import { getDb, execute, queryOne } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
 import type { UpdateApiKeyRequest, UpdateApiKeyResponse, ApiKey } from '@taskinfa/shared';
 
+export const runtime = 'edge';
+
 // DELETE /api/keys/[id] - Soft delete (revoke) API key
 export async function DELETE(
   request: NextRequest,

@@ -4,6 +4,7 @@ import { verifySessionToken } from '@/lib/auth/session';
 
 // Force dynamic rendering since we need to check auth
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 export default async function HomePage() {
   const cookieStore = await cookies();

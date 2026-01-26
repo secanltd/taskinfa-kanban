@@ -8,6 +8,7 @@ import type { Task, User } from '@taskinfa/shared';
 
 // Force dynamic rendering since we need access to D1 database and auth
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 export default async function DashboardPage() {
   const cookieStore = await cookies();
