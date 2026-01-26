@@ -69,8 +69,8 @@ taskinfa-bot/
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/taskinfa-bot.git
-cd taskinfa-bot
+git clone https://github.com/secanltd/taskinfa-kanban.git
+cd taskinfa-kanban
 
 # Install dependencies
 npm install
@@ -301,10 +301,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/taskinfa-bot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/taskinfa-bot/discussions)
-- **Email**: support@secan.com
+- **Issues**: [GitHub Issues](https://github.com/secanltd/taskinfa-kanban/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/secanltd/taskinfa-kanban/discussions)
 
 ---
 
-Developed by **SECAN** • [Website](https://secan.com) • [GitHub](https://github.com/secan)
+Developed by **SECAN** • [GitHub](https://github.com/secanltd)

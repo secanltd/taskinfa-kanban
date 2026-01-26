@@ -1,0 +1,15 @@
+name = "taskinfa-dashboard"
+compatibility_date = "2024-01-01"
+
+pages_build_output_dir = ".vercel/output/static"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "taskinfa-db"
+database_id = "YOUR_DATABASE_ID" # Replace with actual D1 database ID after creation
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "taskinfa-db"
+database_id = "YOUR_DATABASE_ID" # Replace with actual D1 database ID after creation

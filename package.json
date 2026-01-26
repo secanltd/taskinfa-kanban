@@ -1,0 +1,27 @@
+{
+  "name": "taskinfa-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous task automation system integrating kanban dashboard with Claude Code",
+  "author": "SECAN",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dashboard:dev": "npm run dev --workspace=packages/dashboard",
+    "bot:run": "npm run start --workspace=packages/bot"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

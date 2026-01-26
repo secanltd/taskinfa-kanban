@@ -1,0 +1,25 @@
+{
+  "name": "@taskinfa/bot",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "taskinfa-bot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@taskinfa/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  }
+}
