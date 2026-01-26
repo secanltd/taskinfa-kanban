@@ -1,0 +1,26 @@
+{
+  "name": "taskinfa-kanban",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-01-26",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // D1 Database binding
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "taskinfa-kanban-db",
+      "database_id": "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
+    }
+  ],
+
+  // Static assets
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // Environment variables
+  "vars": {
+    "NEXTJS_ENV": "production"
+  }
+}
