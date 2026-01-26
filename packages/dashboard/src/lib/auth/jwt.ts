@@ -15,6 +15,7 @@ export interface ApiKeyPayload {
 export async function generateApiKey(
   workspaceId: string,
   name: string,
+  userId?: string,
   expiresInDays?: number
 ): Promise<{ key: string; id: string }> {
   const db = getDb();
@@ -41,11 +42,11 @@ export async function generateApiKey(
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  // Store in database
+  // Store in database with user_id
   await execute(
     db,
-    `INSERT INTO api_keys (id, workspace_id, key_hash, name, expires_at) VALUES (?, ?, ?, ?, ?)`,
-    [keyId, workspaceId, keyHash, name, expiresAt]
+    `INSERT INTO api_keys (id, workspace_id, user_id, key_hash, name, expires_at, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    [keyId, workspaceId, userId || null, keyHash, name, expiresAt]
   );
 
   return { key: apiKey, id: keyId };
@@ -57,14 +58,20 @@ export async function verifyApiKey(apiKey: string): Promise<ApiKeyPayload | null
     const db = getDb();
     const keyHash = await hashKey(apiKey);
 
-    // Find key in database
+    // Find key in database, checking is_active flag
     const keyRecord = await queryOne<{
       id: string;
       workspace_id: string;
       expires_at: string | null;
-    }>(db, 'SELECT id, workspace_id, expires_at FROM api_keys WHERE key_hash = ?', [keyHash]);
+      is_active: number;
+    }>(db, 'SELECT id, workspace_id, expires_at, is_active FROM api_keys WHERE key_hash = ?', [keyHash]);
 
     if (!keyRecord) {
+      return null;
+    }
+
+    // Check if key is active (not revoked)
+    if (!keyRecord.is_active) {
       return null;
     }
 

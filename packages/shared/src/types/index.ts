@@ -37,14 +37,29 @@ export interface Task {
   completed_at: string | null;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string | null;
+  workspace_id: string;
+  is_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
 export interface ApiKey {
   id: string;
   workspace_id: string;
+  user_id: string | null;
   key_hash: string;
   name: string;
   last_used_at: string | null;
   created_at: string;
   expires_at: string | null;
+  is_active: boolean;
 }
 
 export interface TaskComment {
@@ -185,4 +200,76 @@ export interface MCPToolResult {
     text: string;
   }>;
   isError?: boolean;
+}
+
+// Authentication types
+
+export interface SessionPayload {
+  userId: string;
+  workspaceId: string;
+  type: 'user';
+}
+
+export interface SignupRequest {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+export interface SignupResponse {
+  user: Omit<User, 'password_hash'>;
+  workspace: Workspace;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  user: Omit<User, 'password_hash'>;
+  workspace: Workspace;
+}
+
+export interface GetMeResponse {
+  user: Omit<User, 'password_hash'>;
+  workspace: Workspace;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  expiresInDays?: number;
+}
+
+export interface CreateApiKeyResponse {
+  key: string;
+  id: string;
+  name: string;
+  created_at: string;
+  expires_at: string | null;
+  warning: string;
+}
+
+export interface ListApiKeysResponse {
+  keys: Array<{
+    id: string;
+    name: string;
+    key_preview: string;
+    last_used_at: string | null;
+    created_at: string;
+    expires_at: string | null;
+    is_active: boolean;
+  }>;
+}
+
+export interface UpdateApiKeyRequest {
+  name?: string;
+}
+
+export interface UpdateApiKeyResponse {
+  success: boolean;
+  key: {
+    id: string;
+    name: string;
+  };
 }
