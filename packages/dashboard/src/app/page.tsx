@@ -2,6 +2,9 @@ import { getDb, query } from '@/lib/db/client';
 import KanbanBoard from '@/components/KanbanBoard';
 import type { Task } from '@taskinfa/shared';
 
+// Force dynamic rendering since we need access to D1 database
+export const dynamic = 'force-dynamic';
+
 export default async function HomePage() {
   const db = getDb();
 

@@ -9,19 +9,21 @@ import type { Task, UpdateTaskStatusRequest } from '@taskinfa/shared';
 // GET /api/tasks/[id] - Get task by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await authenticateRequest(request);
   if (!auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { id } = await params;
+
   try {
     const db = getDb();
     const task = await queryOne<Task>(
       db,
       'SELECT * FROM tasks WHERE id = ? AND workspace_id = ?',
-      [params.id, auth.workspaceId]
+      [id, auth.workspaceId]
     );
 
     if (!task) {
@@ -47,12 +49,14 @@ export async function GET(
 // PATCH /api/tasks/[id] - Update task status
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await authenticateRequest(request);
   if (!auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const { id } = await params;
 
   try {
     const body: UpdateTaskStatusRequest = await request.json();
@@ -98,7 +102,7 @@ export async function PATCH(
       updateParams.push(loop_count);
     }
 
-    updateParams.push(params.id, auth.workspaceId);
+    updateParams.push(id, auth.workspaceId);
 
     const sql = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ? AND workspace_id = ?`;
     await execute(db, sql, updateParams);
@@ -107,7 +111,7 @@ export async function PATCH(
     const task = await queryOne<Task>(
       db,
       'SELECT * FROM tasks WHERE id = ? AND workspace_id = ?',
-      [params.id, auth.workspaceId]
+      [id, auth.workspaceId]
     );
 
     if (!task) {
@@ -133,19 +137,21 @@ export async function PATCH(
 // DELETE /api/tasks/[id] - Delete task
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await authenticateRequest(request);
   if (!auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { id } = await params;
+
   try {
     const db = getDb();
     await execute(
       db,
       'DELETE FROM tasks WHERE id = ? AND workspace_id = ?',
-      [params.id, auth.workspaceId]
+      [id, auth.workspaceId]
     );
 
     return NextResponse.json({ success: true });

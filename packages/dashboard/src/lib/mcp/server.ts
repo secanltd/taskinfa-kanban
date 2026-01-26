@@ -15,7 +15,7 @@ import type {
   UpdateTaskStatusRequest,
   TaskStatus,
 } from '@taskinfa/shared';
-import { getDb, query, queryOne, execute } from '../db/client.js';
+import { getDb, query, queryOne, execute } from '../db/client';
 
 // MCP Server for task management
 export class TaskinfaMCPServer {
@@ -52,11 +52,11 @@ export class TaskinfaMCPServer {
       try {
         switch (name) {
           case 'list_tasks':
-            return await this.handleListTasks(args as ListTasksRequest);
+            return await this.handleListTasks((args || {}) as unknown as ListTasksRequest);
           case 'get_task':
-            return await this.handleGetTask(args as GetTaskRequest);
+            return await this.handleGetTask((args || {}) as unknown as GetTaskRequest);
           case 'update_task_status':
-            return await this.handleUpdateTaskStatus(args as UpdateTaskStatusRequest);
+            return await this.handleUpdateTaskStatus((args || {}) as unknown as UpdateTaskStatusRequest);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }

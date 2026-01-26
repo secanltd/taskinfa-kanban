@@ -1,15 +1,15 @@
-name = "taskinfa-dashboard"
+name = "taskinfa-kanban"
 compatibility_date = "2024-01-01"
 
 pages_build_output_dir = ".vercel/output/static"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "taskinfa-db"
-database_id = "YOUR_DATABASE_ID" # Replace with actual D1 database ID after creation
+database_name = "taskinfa-kanban-db"
+database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
 
 [env.production]
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "taskinfa-db"
-database_id = "YOUR_DATABASE_ID" # Replace with actual D1 database ID after creation
+database_name = "taskinfa-kanban-db"
+database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"

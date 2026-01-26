@@ -1,7 +1,7 @@
 // JWT-based authentication for API keys
 import { SignJWT, jwtVerify } from 'jose';
 import { nanoid } from 'nanoid';
-import { getDb, queryOne, execute } from '../db/client.js';
+import { getDb, queryOne, execute } from '../db/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const secret = new TextEncoder().encode(JWT_SECRET);
