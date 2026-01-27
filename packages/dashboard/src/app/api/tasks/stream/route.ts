@@ -34,7 +34,11 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      let lastTaskUpdate = new Date().toISOString();
+      // Use SQLite-compatible datetime format (YYYY-MM-DD HH:MM:SS)
+      const toSqliteDateTime = (date: Date) =>
+        date.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+
+      let lastTaskUpdate = toSqliteDateTime(new Date());
       let isRunning = true;
 
       // Helper to send SSE events
