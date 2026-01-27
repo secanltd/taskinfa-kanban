@@ -2,7 +2,7 @@
 // Get, update, and delete individual tasks
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth/jwt';
+import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, queryOne, execute } from '@/lib/db/client';
 import type { Task, UpdateTaskStatusRequest } from '@taskinfa/shared';
 import {
@@ -22,7 +22,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -50,7 +50,7 @@ export async function GET(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_task',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -61,7 +61,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -150,7 +150,7 @@ export async function PATCH(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'update_task',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -161,7 +161,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -179,7 +179,7 @@ export async function DELETE(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'delete_task',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }

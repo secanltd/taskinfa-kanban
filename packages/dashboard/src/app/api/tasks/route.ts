@@ -2,7 +2,7 @@
 // List and create tasks
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth/jwt';
+import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
 import type { Task, ListTasksRequest, CreateTaskRequest } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
@@ -21,7 +21,7 @@ import {
 export async function GET(request: NextRequest) {
   try {
     // Authenticate
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_tasks',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Authenticate
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     const maxOrderResult = await query<{ max_order: number }>(
       db,
       'SELECT COALESCE(MAX("order"), -1) as max_order FROM tasks WHERE task_list_id = ? AND status = ?',
-      [validatedTaskListId, 'todo']
+      [validatedTaskListId, 'backlog']
     );
 
     const nextOrder = (maxOrderResult[0]?.max_order ?? -1) + 1;
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
         validatedDescription || null,
         validatedPriority || 'medium',
         JSON.stringify(labels),
-        'todo',
+        'backlog',
         nextOrder,
       ]
     );
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'create_task',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
