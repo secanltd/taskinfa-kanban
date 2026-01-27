@@ -208,12 +208,31 @@ WORKER_NAME=${WORKER_NAME:-Worker-1}
 read -p "Enter workspace ID [default]: " WORKSPACE_ID
 WORKSPACE_ID=${WORKSPACE_ID:-default}
 
+# Get GitHub Token (optional, for private repos)
+echo
+echo -e "${YELLOW}GitHub Access (Optional)${NC}"
+echo "If your project uses a private GitHub repository, you'll need to provide a Personal Access Token."
+echo "You can skip this if your repository is public."
+echo
+echo "To create a token:"
+echo "  1. Go to: ${BLUE}https://github.com/settings/tokens${NC}"
+echo "  2. Click 'Generate new token (classic)'"
+echo "  3. Select scopes: ${BLUE}repo${NC} (for private repos)"
+echo "  4. Copy the token"
+echo
+read -p "Enter GitHub Personal Access Token (leave empty to skip): " GITHUB_TOKEN
+
 echo
 print_success "Configuration collected"
 echo "  API Key: ${API_KEY:0:20}..."
 echo "  Project ID: $PROJECT_ID"
 echo "  Worker Name: $WORKER_NAME"
 echo "  Workspace ID: $WORKSPACE_ID"
+if [ -n "$GITHUB_TOKEN" ]; then
+    echo "  GitHub Token: ${GITHUB_TOKEN:0:10}... (configured)"
+else
+    echo "  GitHub Token: (not configured - public repos only)"
+fi
 
 echo
 echo "Step 4: Setting up worker environment"
@@ -236,6 +255,7 @@ WORKER_NAME=$WORKER_NAME
 POLL_INTERVAL=30
 TASKINFA_API_KEY=$API_KEY
 TASKINFA_API_URL=https://taskinfa-kanban.secan-ltd.workers.dev/api
+GITHUB_TOKEN=$GITHUB_TOKEN
 EOF
 
 print_success "Created configuration file"

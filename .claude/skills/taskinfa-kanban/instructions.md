@@ -71,11 +71,19 @@ Atomically claim a task so other workers don't take it.
 1. Use `get_task_list` to check project details
 2. Check if project directory exists in working_directory
 3. If NOT exists and repository_url is set:
+   - **Convert SSH URLs to HTTPS:** If repository_url starts with `git@github.com:`, convert it to `https://github.com/`
+     - Example: `git@github.com:org/repo.git` → `https://github.com/org/repo.git`
    - Clone repository: `git clone <repository_url> <project_name>`
+   - If clone fails with authentication error and it's a private repo, the user needs to configure a GitHub token
    - CD into project directory
    - Run setup (npm install, composer install, pip install, etc.)
    - Mark initialization task as complete
 4. If project exists, CD into it and proceed
+
+**Important Notes:**
+- Git credentials are pre-configured if GITHUB_TOKEN environment variable is set
+- SSH URLs are automatically converted to HTTPS for container compatibility
+- Private repos require a GitHub Personal Access Token to be configured during worker setup
 
 **Project Directory Structure:**
 ```

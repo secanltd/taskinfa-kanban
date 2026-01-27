@@ -87,6 +87,10 @@ The installer will ask for:
 - **Project ID**: Enter your project ID (e.g., `my-first-project`)
 - **Worker Name**: Give your worker a name (default: `Worker-1`)
 - **Workspace ID**: Usually `default`
+- **GitHub Token** (optional): For private repositories
+  - Create at https://github.com/settings/tokens
+  - Select scope: `repo` (for private repos)
+  - Leave empty if using public repos only
 
 ### 5. Start Working!
 
@@ -133,11 +137,22 @@ If you want workers to automatically clone a git repository:
 
 1. Create a GitHub repository (or use an existing one)
 2. In Taskinfa dashboard → **Projects** → Edit your project
-3. Add **Repository URL**: `https://github.com/yourorg/repo`
-4. Workers will automatically:
+3. Add **Repository URL**:
+   - HTTPS format: `https://github.com/yourorg/repo`
+   - SSH format: `git@github.com:yourorg/repo.git` (auto-converted to HTTPS)
+4. **For private repos**: Configure GitHub token during worker setup
+5. Workers will automatically:
    - Clone the repository on first run
    - Work within the project directory
    - Make changes to the code
+
+**Private Repository Access:**
+
+Workers access private repos using GitHub Personal Access Tokens:
+- The installer asks for your token during setup
+- Token is stored securely in worker's `.env` file
+- Workers configure git credentials automatically
+- SSH URLs are converted to HTTPS for container compatibility
 
 ## What's Next?
 

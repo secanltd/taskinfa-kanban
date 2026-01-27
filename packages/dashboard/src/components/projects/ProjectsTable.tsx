@@ -168,14 +168,17 @@ export default function ProjectsTable({ initialProjects }: Props) {
                 Git Repository URL (Optional)
               </label>
               <input
-                type="url"
+                type="text"
                 value={formData.repository_url}
                 onChange={(e) => setFormData({ ...formData, repository_url: e.target.value })}
                 className="w-full border border-gray-300 rounded px-3 py-2"
-                placeholder="https://github.com/yourorg/repo"
+                placeholder="https://github.com/yourorg/repo or git@github.com:yourorg/repo.git"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Workers will clone this repository automatically
+                Workers will clone this repository automatically. Supports both HTTPS and SSH formats.
+              </p>
+              <p className="text-xs text-yellow-600 mt-1">
+                ⚠️ For private repos: You'll need to provide a GitHub Personal Access Token during worker setup
               </p>
             </div>
 

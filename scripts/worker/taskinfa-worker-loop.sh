@@ -17,11 +17,26 @@ MCP_SERVER_ARGS="${MCP_SERVER_ARGS:-/app/mcp/server.js}"
 export CLAUDE_CODE_TASK_LIST_ID="taskinfa-${TASK_LIST_ID}"
 export CLAUDE_CODE_ENABLE_TASKS=true
 
+# Configure Git credentials for private repos
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    echo "🔑 Configuring GitHub authentication..."
+    git config --global credential.helper store
+    mkdir -p ~/.git-credentials-dir
+    echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+    chmod 600 ~/.git-credentials
+    git config --global credential.helper "store --file=$HOME/.git-credentials"
+fi
+
 echo "🚀 Taskinfa Worker starting..."
 echo "   Workspace: ${WORKSPACE_ID}"
 echo "   Task List: ${TASK_LIST_ID}"
 echo "   Worker: ${WORKER_NAME}"
 echo "   Claude Task List ID: ${CLAUDE_CODE_TASK_LIST_ID}"
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    echo "   GitHub Auth: ✅ Configured"
+else
+    echo "   GitHub Auth: ⚠️  Not configured (public repos only)"
+fi
 echo
 
 # Skill prompt that gets passed to Claude Code
