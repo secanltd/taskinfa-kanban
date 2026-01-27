@@ -3,8 +3,20 @@ import { SignJWT, jwtVerify } from 'jose';
 import type { SessionPayload } from '@taskinfa/shared';
 import { NextResponse } from 'next/server';
 
-const SESSION_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'dev-secret-change-in-production';
-const secret = new TextEncoder().encode(SESSION_SECRET);
+// Lazy-load SESSION_SECRET with validation (only when actually used)
+let _secret: Uint8Array | null = null;
+function getSecret(): Uint8Array {
+  if (_secret) return _secret;
+
+  const SESSION_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (!SESSION_SECRET) {
+    throw new Error('SESSION_SECRET or JWT_SECRET environment variable is required');
+  }
+  _secret = new TextEncoder().encode(SESSION_SECRET);
+  return _secret;
+}
+
+const secret = getSecret;
 
 // Session cookie configuration
 const COOKIE_NAME = 'session_token';
@@ -27,7 +39,7 @@ export async function createSession(userId: string, workspaceId: string): Promis
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_MAX_AGE}s`)
-    .sign(secret);
+    .sign(secret());
 
   return token;
 }
@@ -39,7 +51,7 @@ export async function createSession(userId: string, workspaceId: string): Promis
  */
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, secret());
 
     // Validate payload structure
     if (

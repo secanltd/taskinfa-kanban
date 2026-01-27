@@ -3,8 +3,19 @@ import { SignJWT, jwtVerify } from 'jose';
 import { nanoid } from 'nanoid';
 import { getDb, queryOne, execute } from '../db/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
-const secret = new TextEncoder().encode(JWT_SECRET);
+// Lazy-load JWT_SECRET with validation (only when actually used)
+let _secret: Uint8Array | null = null;
+function getSecret(): Uint8Array {
+  if (_secret) return _secret;
+
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  _secret = new TextEncoder().encode(process.env.JWT_SECRET);
+  return _secret;
+}
+
+const secret = getSecret;
 
 export interface ApiKeyPayload {
   keyId: string;
@@ -32,7 +43,7 @@ export async function generateApiKey(
     jwt = jwt.setExpirationTime(`${expiresInDays}d`);
   }
 
-  const token = await jwt.sign(secret);
+  const token = await jwt.sign(secret());
 
   // Hash the key for storage
   const keyHash = await hashKey(apiKey);

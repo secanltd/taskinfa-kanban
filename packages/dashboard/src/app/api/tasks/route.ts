@@ -6,25 +6,49 @@ import { authenticateRequest } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
 import type { Task, ListTasksRequest, CreateTaskRequest } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
+import {
+  safeJsonParseArray,
+  createErrorResponse,
+  authenticationError,
+  validationError,
+  validateInteger,
+  validateEnum,
+  validateString,
+} from '@/lib/utils';
 
 
 // GET /api/tasks - List tasks
 export async function GET(request: NextRequest) {
-  // Authenticate
-  const auth = await authenticateRequest(request);
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
+    // Authenticate
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      throw authenticationError();
+    }
+
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const priority = searchParams.get('priority');
-    const limit = parseInt(searchParams.get('limit') || '50');
+
+    // Validate query parameters
+    const status = validateEnum(searchParams.get('status'),
+      ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
+      { fieldName: 'status', required: false }
+    );
+
+    const priority = validateEnum(searchParams.get('priority'),
+      ['low', 'medium', 'high', 'urgent'] as const,
+      { fieldName: 'priority', required: false }
+    );
+
+    const limit = validateInteger(searchParams.get('limit'), {
+      fieldName: 'limit',
+      min: 1,
+      max: 100,
+      defaultValue: 50,
+    });
 
     const db = getDb();
     let sql = 'SELECT * FROM tasks WHERE workspace_id = ?';
-    const params: any[] = [auth.workspaceId];
+    const params: string[] = [auth.workspaceId];
 
     if (status) {
       sql += ' AND status = ?';
@@ -37,15 +61,15 @@ export async function GET(request: NextRequest) {
     }
 
     sql += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(limit);
+    params.push(String(limit));
 
     const tasks = await query<Task>(db, sql, params);
 
-    // Parse JSON fields
+    // Parse JSON fields safely
     const parsedTasks = tasks.map((task) => ({
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     }));
 
     return NextResponse.json({
@@ -53,32 +77,47 @@ export async function GET(request: NextRequest) {
       total: tasks.length,
     });
   } catch (error) {
-    console.error('Error listing tasks:', error);
-    return NextResponse.json(
-      { error: 'Failed to list tasks' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, {
+      operation: 'list_tasks',
+      workspaceId: (await authenticateRequest(request))?.workspaceId,
+    });
   }
 }
 
 // POST /api/tasks - Create task
 export async function POST(request: NextRequest) {
-  // Authenticate
-  const auth = await authenticateRequest(request);
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
+    // Authenticate
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      throw authenticationError();
+    }
+
     const body: CreateTaskRequest = await request.json();
     const { title, description, priority = 'medium', labels = [] } = body;
 
-    if (!title) {
-      return NextResponse.json(
-        { error: 'Title is required' },
-        { status: 400 }
-      );
+    // Validate inputs
+    const validatedTitle = validateString(title, {
+      fieldName: 'title',
+      required: true,
+      minLength: 1,
+      maxLength: 500,
+    });
+
+    if (!validatedTitle) {
+      throw validationError('Title is required');
     }
+
+    const validatedDescription = validateString(description, {
+      fieldName: 'description',
+      required: false,
+      maxLength: 5000,
+    });
+
+    const validatedPriority = validateEnum(priority,
+      ['low', 'medium', 'high', 'urgent'] as const,
+      { fieldName: 'priority', defaultValue: 'medium' }
+    );
 
     const db = getDb();
     const taskId = `task_${nanoid()}`;
@@ -90,9 +129,9 @@ export async function POST(request: NextRequest) {
       [
         taskId,
         auth.workspaceId,
-        title,
-        description || null,
-        priority,
+        validatedTitle,
+        validatedDescription || null,
+        validatedPriority || 'medium',
         JSON.stringify(labels),
         'todo',
       ]
@@ -111,16 +150,15 @@ export async function POST(request: NextRequest) {
 
     const parsedTask = {
       ...task[0],
-      labels: JSON.parse(task[0].labels as any),
-      files_changed: JSON.parse(task[0].files_changed as any),
+      labels: safeJsonParseArray<string>(task[0].labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task[0].files_changed as unknown as string, []),
     };
 
     return NextResponse.json({ task: parsedTask }, { status: 201 });
   } catch (error) {
-    console.error('Error creating task:', error);
-    return NextResponse.json(
-      { error: 'Failed to create task' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, {
+      operation: 'create_task',
+      workspaceId: (await authenticateRequest(request))?.workspaceId,
+    });
   }
 }

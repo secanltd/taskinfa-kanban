@@ -20,6 +20,7 @@ import type {
   TaskStatus,
 } from '@taskinfa/shared';
 import { getDb, query, queryOne, execute } from '../db/client';
+import { safeJsonParseArray } from '../utils/json';
 
 // MCP Server for task management
 export class TaskinfaMCPServer {
@@ -295,8 +296,8 @@ export class TaskinfaMCPServer {
     // Parse JSON fields
     const parsedTasks = tasks.map((task) => ({
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     }));
 
     return {
@@ -328,8 +329,8 @@ export class TaskinfaMCPServer {
     // Parse JSON fields
     const parsedTask = {
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
     return {
@@ -396,8 +397,8 @@ export class TaskinfaMCPServer {
     // Parse JSON fields
     const parsedTask = {
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
     return {

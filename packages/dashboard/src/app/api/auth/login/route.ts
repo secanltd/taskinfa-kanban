@@ -3,8 +3,10 @@ import { getDb, execute, queryOne } from '@/lib/db/client';
 import { verifyPassword } from '@/lib/auth/password';
 import { normalizeEmail } from '@/lib/validations/auth';
 import { createSession, setSessionCookie } from '@/lib/auth/session';
-import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
+// Rate limiting is now handled at Cloudflare level (see RATE_LIMITING_IMPLEMENTATION.md)
+// import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { LoginRequest, LoginResponse, User, Workspace } from '@taskinfa/shared';
+import { createErrorResponse, authenticationError, authorizationError, internalError } from '@/lib/utils';
 
 
 export async function POST(request: NextRequest) {
@@ -21,10 +23,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email and password are required' },
-        { status: 400 }
-      );
+      throw authenticationError('Email and password are required');
     }
 
     const normalizedEmail = normalizeEmail(email);
@@ -38,27 +37,18 @@ export async function POST(request: NextRequest) {
     );
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
+      throw authenticationError('Invalid email or password');
     }
 
     // Check if account is active
     if (!user.is_active) {
-      return NextResponse.json(
-        { error: 'Account has been disabled' },
-        { status: 403 }
-      );
+      throw authorizationError('Account has been disabled');
     }
 
     // Verify password
     const passwordValid = await verifyPassword(password, user.password_hash);
     if (!passwordValid) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
+      throw authenticationError('Invalid email or password');
     }
 
     // Update last_login_at
@@ -76,10 +66,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: 'Workspace not found' },
-        { status: 500 }
-      );
+      throw internalError('Workspace not found');
     }
 
     // Create session token
@@ -101,10 +88,6 @@ export async function POST(request: NextRequest) {
     return setSessionCookie(nextResponse, sessionToken);
 
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'login' });
   }
 }

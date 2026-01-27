@@ -5,6 +5,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth/jwt';
 import { getDb, queryOne, execute } from '@/lib/db/client';
 import type { Task, UpdateTaskStatusRequest } from '@taskinfa/shared';
+import {
+  safeJsonParseArray,
+  createErrorResponse,
+  authenticationError,
+  notFoundError,
+  validationError,
+  validateEnum,
+  validateInteger,
+} from '@/lib/utils';
 
 
 // GET /api/tasks/[id] - Get task by ID
@@ -12,14 +21,14 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authenticateRequest(request);
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id } = await params;
-
   try {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      throw authenticationError();
+    }
+
+    const { id } = await params;
+
     const db = getDb();
     const task = await queryOne<Task>(
       db,
@@ -28,22 +37,21 @@ export async function GET(
     );
 
     if (!task) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+      throw notFoundError('Task');
     }
 
     const parsedTask = {
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
     return NextResponse.json({ task: parsedTask });
   } catch (error) {
-    console.error('Error fetching task:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch task' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, {
+      operation: 'get_task',
+      workspaceId: (await authenticateRequest(request))?.workspaceId,
+    });
   }
 }
 
@@ -52,34 +60,37 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authenticateRequest(request);
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id } = await params;
-
   try {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      throw authenticationError();
+    }
+
+    const { id } = await params;
+
     const body: UpdateTaskStatusRequest = await request.json();
     const { status, completion_notes, files_changed, error_count, loop_count } = body;
 
-    if (!status) {
-      return NextResponse.json(
-        { error: 'Status is required' },
-        { status: 400 }
-      );
+    // Validate status
+    const validatedStatus = validateEnum(status,
+      ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
+      { fieldName: 'status', required: true }
+    );
+
+    if (!validatedStatus) {
+      throw validationError('Status is required');
     }
 
     const db = getDb();
 
     // Build dynamic UPDATE query
     const updates: string[] = ['status = ?', 'updated_at = datetime("now")'];
-    const updateParams: any[] = [status];
+    const updateParams: (string | number)[] = [validatedStatus];
 
     // Handle status-specific timestamps
-    if (status === 'in_progress') {
+    if (validatedStatus === 'in_progress') {
       updates.push('started_at = COALESCE(started_at, datetime("now"))');
-    } else if (status === 'done' || status === 'review') {
+    } else if (validatedStatus === 'done' || validatedStatus === 'review') {
       updates.push('completed_at = COALESCE(completed_at, datetime("now"))');
     }
 
@@ -94,13 +105,23 @@ export async function PATCH(
     }
 
     if (error_count !== undefined) {
+      const validatedErrorCount = validateInteger(String(error_count), {
+        fieldName: 'error_count',
+        min: 0,
+        defaultValue: 0,
+      });
       updates.push('error_count = ?');
-      updateParams.push(error_count);
+      updateParams.push(validatedErrorCount);
     }
 
     if (loop_count !== undefined) {
+      const validatedLoopCount = validateInteger(String(loop_count), {
+        fieldName: 'loop_count',
+        min: 0,
+        defaultValue: 0,
+      });
       updates.push('loop_count = ?');
-      updateParams.push(loop_count);
+      updateParams.push(validatedLoopCount);
     }
 
     updateParams.push(id, auth.workspaceId);
@@ -116,22 +137,21 @@ export async function PATCH(
     );
 
     if (!task) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+      throw notFoundError('Task');
     }
 
     const parsedTask = {
       ...task,
-      labels: JSON.parse(task.labels as any),
-      files_changed: JSON.parse(task.files_changed as any),
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
     return NextResponse.json({ task: parsedTask });
   } catch (error) {
-    console.error('Error updating task:', error);
-    return NextResponse.json(
-      { error: 'Failed to update task' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, {
+      operation: 'update_task',
+      workspaceId: (await authenticateRequest(request))?.workspaceId,
+    });
   }
 }
 
@@ -140,14 +160,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authenticateRequest(request);
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id } = await params;
-
   try {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      throw authenticationError();
+    }
+
+    const { id } = await params;
+
     const db = getDb();
     await execute(
       db,
@@ -157,10 +177,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting task:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete task' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, {
+      operation: 'delete_task',
+      workspaceId: (await authenticateRequest(request))?.workspaceId,
+    });
   }
 }

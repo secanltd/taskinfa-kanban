@@ -4,8 +4,10 @@ import { getDb, execute, queryOne } from '@/lib/db/client';
 import { hashPassword, validatePassword } from '@/lib/auth/password';
 import { validateEmail, normalizeEmail } from '@/lib/validations/auth';
 import { createSession, setSessionCookie } from '@/lib/auth/session';
-import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
+// Rate limiting is now handled at Cloudflare level (see RATE_LIMITING_IMPLEMENTATION.md)
+// import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { SignupRequest, SignupResponse, User, Workspace } from '@taskinfa/shared';
+import { createErrorResponse, validationError, conflictError, internalError } from '@/lib/utils';
 
 
 export async function POST(request: NextRequest) {
@@ -22,27 +24,18 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email and password are required' },
-        { status: 400 }
-      );
+      throw validationError('Email and password are required');
     }
 
     // Validate email format
     if (!validateEmail(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
-      );
+      throw validationError('Invalid email format');
     }
 
     // Validate password strength
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.valid) {
-      return NextResponse.json(
-        { error: 'Password validation failed', details: passwordValidation.errors },
-        { status: 400 }
-      );
+      throw validationError('Password validation failed', { errors: passwordValidation.errors });
     }
 
     const normalizedEmail = normalizeEmail(email);
@@ -56,10 +49,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: 'Email already registered' },
-        { status: 409 }
-      );
+      throw conflictError('Email already registered');
     }
 
     // Hash password
@@ -89,10 +79,7 @@ export async function POST(request: NextRequest) {
     const workspace = await queryOne<Workspace>(db, 'SELECT * FROM workspaces WHERE id = ?', [workspaceId]);
 
     if (!user || !workspace) {
-      return NextResponse.json(
-        { error: 'Failed to create user' },
-        { status: 500 }
-      );
+      throw internalError('Failed to create user');
     }
 
     // Create session token
@@ -114,10 +101,6 @@ export async function POST(request: NextRequest) {
     return setSessionCookie(nextResponse, sessionToken);
 
   } catch (error) {
-    console.error('Signup error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'signup' });
   }
 }
