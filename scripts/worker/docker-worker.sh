@@ -10,14 +10,12 @@ TASKINFA_API_KEY="${TASKINFA_API_KEY:?Error: TASKINFA_API_KEY is required}"
 TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 
 WORKSPACE_DIR="/workspace"
 LOG_DIR="/app/logs"
 HEARTBEAT_INTERVAL=10
 
-# Export ANTHROPIC_API_KEY for Claude CLI
-export ANTHROPIC_API_KEY
+# Claude Code credentials are mounted from host at ~/.claude
 
 # Colors for output
 RED='\033[0;31m'

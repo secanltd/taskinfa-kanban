@@ -6,16 +6,20 @@
 # priority task across ALL projects and clone repos as needed.
 #
 # Usage:
-#   Single worker:    docker-compose -f docker-compose.workers.yml up worker-john
-#   Multiple workers: docker-compose -f docker-compose.workers.yml --profile multi-worker up
-#   All workers:      docker-compose -f docker-compose.workers.yml --profile multi-worker up -d
+#   # Extract OAuth token from macOS Keychain and start worker:
+#   OAUTH_TOKEN=$(security find-generic-password -w -s "Claude Code-credentials" -a "$USER" | jq -r '.claudeAiOauth.accessToken')
+#   TASKINFA_API_KEY=xxx CLAUDE_CODE_OAUTH_TOKEN=$OAUTH_TOKEN docker-compose -f docker-compose.workers.yml up worker-john -d
 #
-# Required environment variables (set in .env or export):
-#   - TASKINFA_API_KEY: API key for authentication with Taskinfa dashboard
-#   - ANTHROPIC_API_KEY: Claude API key for Claude Code CLI
+#   # Multiple workers:
+#   docker-compose -f docker-compose.workers.yml --profile multi-worker up -d
+#
+# Required environment variables:
+#   - TASKINFA_API_KEY: API key for Taskinfa dashboard
+#   - CLAUDE_CODE_OAUTH_TOKEN: OAuth token from macOS Keychain (uses Max subscription)
 #   - GITHUB_TOKEN: (Optional) For cloning private repositories
-
-version: '3.8'
+#
+# To get CLAUDE_CODE_OAUTH_TOKEN from macOS Keychain:
+#   security find-generic-password -w -s "Claude Code-credentials" -a "$USER" | jq -r '.claudeAiOauth.accessToken'
 
 services:
   # Worker: John
@@ -30,7 +34,7 @@ services:
       - WORKER_NAME=John
       - TASKINFA_API_KEY=${TASKINFA_API_KEY}
       - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
@@ -38,6 +42,8 @@ services:
       - worker-john-workspace:/workspace
       # Log files (accessible from host)
       - ./logs/john:/app/logs
+      # Claude Code credentials and state from host (read-write for session data)
+      - ~/.claude:/home/worker/.claude
     restart: unless-stopped
     networks:
       - taskinfa-workers
@@ -54,12 +60,13 @@ services:
       - WORKER_NAME=Sarah
       - TASKINFA_API_KEY=${TASKINFA_API_KEY}
       - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
       - worker-sarah-workspace:/workspace
       - ./logs/sarah:/app/logs
+      - ~/.claude:/home/worker/.claude
     restart: unless-stopped
     networks:
       - taskinfa-workers
@@ -78,12 +85,13 @@ services:
       - WORKER_NAME=Mike
       - TASKINFA_API_KEY=${TASKINFA_API_KEY}
       - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
       - worker-mike-workspace:/workspace
       - ./logs/mike:/app/logs
+      - ~/.claude:/home/worker/.claude
     restart: unless-stopped
     networks:
       - taskinfa-workers

@@ -3,8 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
-import { getDb, query, queryOne } from '@/lib/db/client';
-import type { Task, TaskList } from '@taskinfa/shared';
+import { getDb, query } from '@/lib/db/client';
+import type { Task } from '@taskinfa/shared';
 import {
   safeJsonParseArray,
   createErrorResponse,
@@ -19,12 +19,15 @@ interface TaskWithProject extends Task {
 
 // GET /api/tasks/next - Get highest priority unassigned task
 export async function GET(request: NextRequest) {
+  let workspaceId: string | undefined;
+
   try {
     // Authenticate
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    workspaceId = auth.workspaceId;
 
     const db = getDb();
 
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
         t."order" ASC,
         t.created_at ASC
       LIMIT 1
-    `, [auth.workspaceId]);
+    `, [workspaceId]);
 
     if (tasks.length === 0) {
       return NextResponse.json({
@@ -65,14 +68,7 @@ export async function GET(request: NextRequest) {
 
     const taskRow = tasks[0];
 
-    // Parse JSON fields
-    const task: Task = {
-      ...taskRow,
-      labels: safeJsonParseArray<string>(taskRow.labels as unknown as string, []),
-      files_changed: safeJsonParseArray<string>(taskRow.files_changed as unknown as string, []),
-    };
-
-    // Remove extra fields from task object
+    // Extract project info and clean task object
     const { repository_url, project_id, project_name, ...cleanTask } = taskRow;
 
     const parsedTask = {
@@ -92,7 +88,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_next_task',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
+      workspaceId,
     });
   }
 }
