@@ -5,6 +5,32 @@
 
 set -e
 
+# Detect if script is being piped from curl
+# If so, download it and re-run interactively
+if [ ! -t 0 ]; then
+    echo "Detected non-interactive mode (piped from curl)."
+    echo "Downloading installer for interactive execution..."
+    echo
+
+    TEMP_SCRIPT=$(mktemp /tmp/taskinfa-install.XXXXXX.sh)
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh -o "$TEMP_SCRIPT"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$TEMP_SCRIPT" https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh
+    else
+        echo "Error: Neither curl nor wget found. Cannot download installer."
+        exit 1
+    fi
+
+    chmod +x "$TEMP_SCRIPT"
+    echo "Running installer interactively..."
+    echo
+
+    # Re-run with terminal input
+    exec bash "$TEMP_SCRIPT"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -269,7 +295,7 @@ print_success "Created configuration file"
 
 # Download worker script
 print_info "Downloading worker script..."
-curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-bot/main/scripts/worker/taskinfa-worker-loop.sh \
+curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/worker/taskinfa-worker-loop.sh \
     > "$WORKER_DIR/worker.sh" 2>/dev/null || {
     print_warning "Failed to download from GitHub, using local copy"
     # Create a basic worker script
@@ -372,8 +398,8 @@ echo "   ${BLUE}cd $WORKER_DIR${NC}"
 echo "   ${BLUE}./stop.sh${NC}"
 echo
 echo "For help and documentation:"
-echo "  • Documentation: https://github.com/secanltd/taskinfa-bot"
-echo "  • Issues: https://github.com/secanltd/taskinfa-bot/issues"
+echo "  • Documentation: https://github.com/secanltd/taskinfa-kanban"
+echo "  • Issues: https://github.com/secanltd/taskinfa-kanban/issues"
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
