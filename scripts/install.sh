@@ -7,7 +7,8 @@ set -e
 
 # Detect if script is being piped from curl
 # If so, download it and re-run interactively
-if [ ! -t 0 ]; then
+# But only if we're not already running from /tmp (prevent infinite loop)
+if [ ! -t 0 ] && [[ "$0" != /tmp/taskinfa-install.* ]]; then
     echo "Detected non-interactive mode (piped from curl)."
     echo "Downloading installer for interactive execution..."
     echo
@@ -27,8 +28,8 @@ if [ ! -t 0 ]; then
     echo "Running installer interactively..."
     echo
 
-    # Re-run with terminal input
-    exec bash "$TEMP_SCRIPT"
+    # Re-run with terminal input explicitly connected
+    exec bash "$TEMP_SCRIPT" </dev/tty
 fi
 
 # Colors for output
