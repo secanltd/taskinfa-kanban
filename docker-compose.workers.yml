@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Workers for "company-website" project
+  worker-company-website-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: worker-company-website-1
+    environment:
+      - WORKSPACE_ID=default
+      - TASK_LIST_ID=company-website
+      - WORKER_NAME=Worker-1
+      - POLL_INTERVAL=30
+      - MCP_SERVER_CMD=node
+      - MCP_SERVER_ARGS=/app/mcp/server.js
+    volumes:
+      - ./workspace-company-website:/workspace  # Shared workspace for this project
+      - ~/.claude:/home/worker/.claude:ro
+      - ./logs/company-website-1:/var/log/worker
+    restart: unless-stopped
+    networks:
+      - taskinfa-net
+
+  worker-company-website-2:
+    profiles: ["multi-worker"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: worker-company-website-2
+    environment:
+      - WORKSPACE_ID=default
+      - TASK_LIST_ID=company-website
+      - WORKER_NAME=Worker-2
+      - POLL_INTERVAL=30
+      - MCP_SERVER_CMD=node
+      - MCP_SERVER_ARGS=/app/mcp/server.js
+    volumes:
+      - ./workspace-company-website:/workspace  # SAME workspace (shared state)
+      - ~/.claude:/home/worker/.claude:ro
+      - ./logs/company-website-2:/var/log/worker
+    restart: unless-stopped
+    networks:
+      - taskinfa-net
+
+  # Workers for "mobile-app" project (different task list)
+  worker-mobile-app-1:
+    profiles: ["other-projects"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: worker-mobile-app-1
+    environment:
+      - WORKSPACE_ID=default
+      - TASK_LIST_ID=mobile-app
+      - WORKER_NAME=Worker-1
+      - POLL_INTERVAL=30
+      - MCP_SERVER_CMD=node
+      - MCP_SERVER_ARGS=/app/mcp/server.js
+    volumes:
+      - ./workspace-mobile-app:/workspace  # Different workspace
+      - ~/.claude:/home/worker/.claude:ro
+      - ./logs/mobile-app-1:/var/log/worker
+    restart: unless-stopped
+    networks:
+      - taskinfa-net
+
+  # Workers for "api-backend" project (different task list)
+  worker-api-backend-1:
+    profiles: ["other-projects"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: worker-api-backend-1
+    environment:
+      - WORKSPACE_ID=default
+      - TASK_LIST_ID=api-backend
+      - WORKER_NAME=Worker-1
+      - POLL_INTERVAL=30
+      - MCP_SERVER_CMD=node
+      - MCP_SERVER_ARGS=/app/mcp/server.js
+    volumes:
+      - ./workspace-api-backend:/workspace  # Different workspace
+      - ~/.claude:/home/worker/.claude:ro
+      - ./logs/api-backend-1:/var/log/worker
+    restart: unless-stopped
+    networks:
+      - taskinfa-net
+
+networks:
+  taskinfa-net:
+    driver: bridge

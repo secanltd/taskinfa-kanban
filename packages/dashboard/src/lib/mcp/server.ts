@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type {
   Task,
+  TaskList,
   TaskComment,
   ListTasksRequest,
   GetTaskRequest,
@@ -68,6 +69,10 @@ export class TaskinfaMCPServer {
             return await this.handleListComments((args || {}) as unknown as ListTaskCommentsRequest);
           case 'claim_task':
             return await this.handleClaimTask((args || {}) as unknown as ClaimTaskRequest);
+          case 'list_task_lists':
+            return await this.handleListTaskLists((args || {}) as unknown as { workspace_id: string });
+          case 'get_task_list':
+            return await this.handleGetTaskList((args || {}) as unknown as { task_list_id: string });
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -90,13 +95,17 @@ export class TaskinfaMCPServer {
       {
         name: 'list_tasks',
         description:
-          'List tasks filtered by workspace, status, priority, or bot assignment. Returns tasks sorted by creation date (newest first).',
+          'List tasks filtered by workspace, task list (project), status, priority, or bot assignment. Returns tasks sorted by order within status column (top = highest priority).',
         inputSchema: {
           type: 'object',
           properties: {
             workspace_id: {
               type: 'string',
               description: 'Filter by workspace ID',
+            },
+            task_list_id: {
+              type: 'string',
+              description: 'Filter by task list (project) ID',
             },
             status: {
               type: 'string',
@@ -255,11 +264,41 @@ export class TaskinfaMCPServer {
           required: ['task_id', 'bot_name'],
         },
       },
+      {
+        name: 'list_task_lists',
+        description:
+          'List all task lists (projects) in a workspace. Each task list represents a project with its own repository and working directory.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            workspace_id: {
+              type: 'string',
+              description: 'Workspace ID to list task lists for',
+            },
+          },
+          required: ['workspace_id'],
+        },
+      },
+      {
+        name: 'get_task_list',
+        description:
+          'Get detailed information about a specific task list (project), including repository URL and working directory for cloning and setup.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_list_id: {
+              type: 'string',
+              description: 'Task list ID',
+            },
+          },
+          required: ['task_list_id'],
+        },
+      },
     ];
   }
 
   private async handleListTasks(args: ListTasksRequest) {
-    const { workspace_id, status, priority, assigned_to, limit = 50 } = args;
+    const { workspace_id, task_list_id, status, priority, assigned_to, limit = 50 } = args;
 
     let sql = 'SELECT * FROM tasks WHERE 1=1';
     const params: any[] = [];
@@ -267,6 +306,11 @@ export class TaskinfaMCPServer {
     if (workspace_id) {
       sql += ' AND workspace_id = ?';
       params.push(workspace_id);
+    }
+
+    if (task_list_id) {
+      sql += ' AND task_list_id = ?';
+      params.push(task_list_id);
     }
 
     if (status) {
@@ -288,7 +332,8 @@ export class TaskinfaMCPServer {
       }
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT ?';
+    // Order by position within status column (ascending), then creation date
+    sql += ' ORDER BY "order" ASC, created_at ASC LIMIT ?';
     params.push(limit);
 
     const tasks = await query<Task>(this.db, sql, params);
@@ -575,6 +620,55 @@ export class TaskinfaMCPServer {
             success: true,
             task: parsedTask,
           }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async handleListTaskLists(args: { workspace_id: string }) {
+    const { workspace_id } = args;
+
+    const taskLists = await query<TaskList>(
+      this.db,
+      'SELECT * FROM task_lists WHERE workspace_id = ? ORDER BY created_at DESC',
+      [workspace_id]
+    );
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              task_lists: taskLists,
+              total: taskLists.length,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+
+  private async handleGetTaskList(args: { task_list_id: string }) {
+    const { task_list_id } = args;
+
+    const taskList = await queryOne<TaskList>(
+      this.db,
+      'SELECT * FROM task_lists WHERE id = ?',
+      [task_list_id]
+    );
+
+    if (!taskList) {
+      throw new Error(`Task list not found: ${task_list_id}`);
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ task_list: taskList }, null, 2),
         },
       ],
     };

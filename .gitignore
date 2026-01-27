@@ -37,3 +37,7 @@ coverage/
 
 # Cloudflare
 .dev.vars
+
+# Worker workspaces and logs
+workspace-*/
+logs/

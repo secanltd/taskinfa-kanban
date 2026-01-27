@@ -1,0 +1,44 @@
+FROM ubuntu:22.04
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl wget git jq bash tee \
+    build-essential \
+    supervisor \
+    nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN curl -fsSL https://claude.sh/install.sh | bash
+
+# Create directories
+RUN mkdir -p /workspace /app/mcp /var/log/worker /var/log/supervisor
+WORKDIR /workspace
+
+# Copy MCP server (from dashboard build)
+COPY packages/dashboard/dist/lib/mcp/server.js /app/mcp/server.js
+
+# Copy worker script
+COPY scripts/worker/taskinfa-worker-loop.sh /app/worker/taskinfa-worker-loop.sh
+RUN chmod +x /app/worker/taskinfa-worker-loop.sh
+
+# Copy skill
+COPY .claude/skills/taskinfa-kanban /workspace/.claude/skills/taskinfa-kanban
+
+# Create worker user
+RUN useradd -m -s /bin/bash worker && \
+    chown -R worker:worker /workspace /app /var/log/worker
+
+# Supervisord config
+COPY config/supervisord-worker.conf /etc/supervisor/conf.d/supervisord.conf
+
+USER worker
+
+ENV WORKSPACE_ID=default
+ENV TASK_LIST_ID=default
+ENV WORKER_NAME=Worker-1
+ENV POLL_INTERVAL=30
+ENV MCP_SERVER_CMD=node
+ENV MCP_SERVER_ARGS=/app/mcp/server.js
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

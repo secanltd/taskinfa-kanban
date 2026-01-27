@@ -2,15 +2,15 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb, query, queryOne } from '@/lib/db/client';
 import { verifySessionToken } from '@/lib/auth/session';
-import KanbanBoard from '@/components/KanbanBoard';
-import DashboardHeader from '@/components/dashboard/DashboardHeader';
+import type { TaskList, User } from '@taskinfa/shared';
+import ProjectsTable from '@/components/projects/ProjectsTable';
 import LogoutButton from '@/components/auth/LogoutButton';
-import type { Task, TaskList, User } from '@taskinfa/shared';
+import Link from 'next/link';
 
-// Force dynamic rendering since we need access to D1 database and auth
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage() {
+export default async function ProjectsPage() {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get('session_token')?.value;
 
@@ -44,77 +44,76 @@ export default async function DashboardPage() {
     [session.workspaceId]
   );
 
-  // Fetch tasks for user's workspace
-  const tasks = await query<Task>(
-    db,
-    'SELECT * FROM tasks WHERE workspace_id = ? ORDER BY "order" ASC, created_at ASC',
-    [session.workspaceId]
+  // Get task count for each task list
+  const taskListsWithCounts = await Promise.all(
+    taskLists.map(async (taskList) => {
+      const tasksCount = await query<{ count: number }>(
+        db,
+        'SELECT COUNT(*) as count FROM tasks WHERE task_list_id = ?',
+        [taskList.id]
+      );
+      return {
+        ...taskList,
+        task_count: tasksCount[0]?.count || 0,
+      };
+    })
   );
-
-  // Parse JSON fields
-  const parsedTasks = tasks.map((task) => ({
-    ...task,
-    labels: JSON.parse(task.labels as unknown as string),
-    files_changed: JSON.parse(task.files_changed as unknown as string),
-  }));
 
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Taskinfa Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
             <p className="text-gray-600 mt-1">
-              Autonomous task automation with Claude Code
+              Manage your task lists and worker projects
             </p>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">
               {user.name || user.email}
             </span>
-            <a
-              href="/projects"
+            <Link
+              href="/dashboard"
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
-              Projects
-            </a>
-            <a
+              Dashboard
+            </Link>
+            <Link
               href="/settings"
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               Settings
-            </a>
+            </Link>
             <LogoutButton />
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <DashboardHeader taskLists={taskLists} />
-        {taskLists.length === 0 ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">⚠️</span>
-              <div>
-                <h3 className="font-semibold text-yellow-900 mb-2">
-                  No Projects Found
-                </h3>
-                <p className="text-yellow-800 mb-3">
-                  You need to create at least one project before you can create tasks.
-                  Projects organize your tasks and are used by worker containers to know which tasks to execute.
-                </p>
-                <a
-                  href="/projects"
-                  className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                  Create Your First Project
-                </a>
-              </div>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              What are Projects?
+            </h2>
+            <div className="text-gray-600 text-sm space-y-2">
+              <p>
+                <strong>Projects (Task Lists)</strong> are containers for related tasks.
+                Each project represents a separate codebase or area of work.
+              </p>
+              <p>
+                When you create a project, you can optionally provide a <strong>Git repository URL</strong>.
+                Workers will automatically clone this repository when they start working on tasks from this project.
+              </p>
+              <p>
+                The <strong>Project ID</strong> is used by worker containers to know which tasks to execute.
+                You'll need this ID when setting up workers.
+              </p>
             </div>
           </div>
-        ) : (
-          <KanbanBoard initialTasks={parsedTasks} taskLists={taskLists} />
-        )}
+
+          <ProjectsTable initialProjects={taskListsWithCounts} />
+        </div>
       </main>
 
       <footer className="bg-white border-t mt-12">

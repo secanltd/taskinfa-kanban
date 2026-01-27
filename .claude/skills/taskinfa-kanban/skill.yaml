@@ -1,0 +1,4 @@
+name: taskinfa-kanban
+version: 1.0.0
+description: Automated workflow for executing tasks from Taskinfa kanban board
+enabled: true

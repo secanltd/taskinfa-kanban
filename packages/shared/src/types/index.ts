@@ -13,9 +13,21 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface TaskList {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  repository_url: string | null;
+  working_directory: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Task {
   id: string;
   workspace_id: string;
+  task_list_id: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -23,6 +35,7 @@ export interface Task {
   labels: string[]; // JSON array
   assignee: string | null;
   assigned_to: string | null; // Bot name that claimed this task
+  order: number; // Position within status column (0 = top)
 
   // Execution metadata
   loop_count: number;
@@ -77,6 +90,7 @@ export interface TaskComment {
 
 export interface ListTasksRequest {
   workspace_id?: string;
+  task_list_id?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string | null;
@@ -112,6 +126,7 @@ export interface UpdateTaskStatusResponse {
 
 export interface CreateTaskRequest {
   workspace_id: string;
+  task_list_id?: string;
   title: string;
   description?: string;
   priority?: TaskPriority;

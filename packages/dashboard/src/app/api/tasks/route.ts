@@ -29,6 +29,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     // Validate query parameters
+    const task_list_id = validateString(searchParams.get('task_list_id'), {
+      fieldName: 'task_list_id',
+      required: false,
+    });
+
     const status = validateEnum(searchParams.get('status'),
       ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
       { fieldName: 'status', required: false }
@@ -50,6 +55,11 @@ export async function GET(request: NextRequest) {
     let sql = 'SELECT * FROM tasks WHERE workspace_id = ?';
     const params: string[] = [auth.workspaceId];
 
+    if (task_list_id) {
+      sql += ' AND task_list_id = ?';
+      params.push(task_list_id);
+    }
+
     if (status) {
       sql += ' AND status = ?';
       params.push(status);
@@ -60,7 +70,7 @@ export async function GET(request: NextRequest) {
       params.push(priority);
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT ?';
+    sql += ' ORDER BY "order" ASC, created_at ASC LIMIT ?';
     params.push(String(limit));
 
     const tasks = await query<Task>(db, sql, params);
@@ -94,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CreateTaskRequest = await request.json();
-    const { title, description, priority = 'medium', labels = [] } = body;
+    const { title, description, priority = 'medium', labels = [], task_list_id } = body;
 
     // Validate inputs
     const validatedTitle = validateString(title, {
@@ -106,6 +116,17 @@ export async function POST(request: NextRequest) {
 
     if (!validatedTitle) {
       throw validationError('Title is required');
+    }
+
+    const validatedTaskListId = validateString(task_list_id, {
+      fieldName: 'task_list_id',
+      required: true,
+      minLength: 1,
+      maxLength: 200,
+    });
+
+    if (!validatedTaskListId) {
+      throw validationError('Task list ID is required');
     }
 
     const validatedDescription = validateString(description, {
@@ -120,20 +141,43 @@ export async function POST(request: NextRequest) {
     );
 
     const db = getDb();
+
+    // Verify task list exists and belongs to user
+    const taskList = await query(
+      db,
+      'SELECT id FROM task_lists WHERE id = ? AND workspace_id = ?',
+      [validatedTaskListId, auth.workspaceId]
+    );
+
+    if (taskList.length === 0) {
+      throw validationError('Task list not found');
+    }
+
+    // Get next order number for this task list and status
+    const maxOrderResult = await query<{ max_order: number }>(
+      db,
+      'SELECT COALESCE(MAX("order"), -1) as max_order FROM tasks WHERE task_list_id = ? AND status = ?',
+      [validatedTaskListId, 'todo']
+    );
+
+    const nextOrder = (maxOrderResult[0]?.max_order ?? -1) + 1;
+
     const taskId = `task_${nanoid()}`;
 
     await execute(
       db,
-      `INSERT INTO tasks (id, workspace_id, title, description, priority, labels, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, workspace_id, task_list_id, title, description, priority, labels, status, "order")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         taskId,
         auth.workspaceId,
+        validatedTaskListId,
         validatedTitle,
         validatedDescription || null,
         validatedPriority || 'medium',
         JSON.stringify(labels),
         'todo',
+        nextOrder,
       ]
     );
 

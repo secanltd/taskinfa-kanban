@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { Task, TaskStatus } from '@taskinfa/shared';
+import type { Task, TaskList, TaskStatus } from '@taskinfa/shared';
 
 interface KanbanBoardProps {
   initialTasks: Task[];
+  taskLists: TaskList[];
 }
 
 const statusColumns: { status: TaskStatus; label: string; color: string }[] = [
@@ -15,7 +16,7 @@ const statusColumns: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'done', label: 'Done', color: 'bg-green-100' },
 ];
 
-export default function KanbanBoard({ initialTasks }: KanbanBoardProps) {
+export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
   const getTasksByStatus = (status: TaskStatus) => {
