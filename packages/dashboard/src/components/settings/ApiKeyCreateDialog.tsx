@@ -49,13 +49,13 @@ export default function ApiKeyCreateDialog({ onClose, onCreated }: ApiKeyCreateD
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
+      const data = await response.json() as { error?: string; key?: string };
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create API key');
       }
 
-      setCreatedKey(data.key);
+      setCreatedKey(data.key || '');
       setStep('success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

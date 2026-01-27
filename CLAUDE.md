@@ -188,57 +188,78 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 
 ## Deployment
 
-### ⚠️ IMPORTANT: We Deploy to Cloudflare Workers (NOT Pages)
+### ⚠️ CRITICAL: We Deploy to Cloudflare Workers Using @opennextjs/cloudflare
 
-**DO NOT USE:** `wrangler pages deploy` ❌
-**ALWAYS USE:** `wrangler deploy` ✅
+**🚫 DO NOT USE (DEPRECATED):**
+- `@cloudflare/next-on-pages` ❌ (deprecated in 2026)
+- `wrangler pages deploy` ❌ (deploys to Pages, not Workers)
 
-We deploy directly to **Cloudflare Workers** at:
-- **Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev
+**✅ ALWAYS USE:**
+- `@opennextjs/cloudflare` ✅ (official OpenNext adapter for Workers)
+- `npm run deploy:prod` ✅ (our deployment script)
+
+**Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev
+
+### Why @opennextjs/cloudflare?
+
+In 2026, Cloudflare deprecated `@cloudflare/next-on-pages` and recommends using `@opennextjs/cloudflare` instead:
+
+- ✅ **Node.js Runtime** - Full Node.js API support (vs Edge Runtime limitations)
+- ✅ **Better Feature Support** - More Next.js features work out of the box
+- ✅ **Official Support** - Maintained by the OpenNext team with Cloudflare
+- ✅ **No Edge Runtime Required** - Use standard Next.js routes
 
 ### Deployment Architecture
 
 ```
-Next.js App → OpenNext.js Build → Cloudflare Workers
-             (@cloudflare/next-on-pages)
+Next.js App → @opennextjs/cloudflare build → Cloudflare Workers
+             (opennextjs-cloudflare CLI)
 ```
 
-**Key Components:**
-- **Worker Script:** `.vercel/output/static/_worker.js/index.js` (main entry point)
-- **Static Assets:** `.vercel/output/static/` (served via ASSETS binding)
+**Build Output:**
+- **Worker Script:** `.open-next/worker.js` (main entry point)
+- **Static Assets:** `.open-next/assets/` (served via ASSETS binding)
 - **Database:** D1 (bound as "DB")
 
-### Build & Deploy Process
+### Quick Deploy Command
 
-**Step 1: Build with OpenNext.js**
 ```bash
 cd packages/dashboard
-npx @cloudflare/next-on-pages
+npm run deploy:prod
 ```
 
-This creates:
-- Worker code at `.vercel/output/static/_worker.js/`
-- Static assets in `.vercel/output/static/`
+This script does:
+1. Build Next.js app
+2. Generate OpenNext bundle
+3. Deploy to Cloudflare Workers
 
-**Step 2: Deploy to Workers**
+### Manual Deployment Steps
+
+If you need to deploy manually:
+
 ```bash
-npx wrangler deploy
+cd packages/dashboard
+
+# Step 1: Build and generate OpenNext bundle
+npx opennextjs-cloudflare build
+
+# Step 2: Deploy to Workers
+npx opennextjs-cloudflare deploy
 ```
 
-**DO NOT run:** `wrangler pages deploy` (deploys to Pages, not Workers)
+### Configuration Files
 
-### wrangler.toml Configuration
+#### 1. wrangler.toml
 
-**Correct Configuration for Workers:**
 ```toml
 name = "taskinfa-kanban"
-main = ".vercel/output/static/_worker.js/index.js"
-compatibility_date = "2024-01-01"
+main = ".open-next/worker.js"
+compatibility_date = "2026-01-16"
 compatibility_flags = ["nodejs_compat"]
 
-# ASSETS binding for static files
+# ASSETS binding for static files (CSS, JS, images)
 [assets]
-directory = ".vercel/output/static"
+directory = ".open-next/assets"
 binding = "ASSETS"
 
 # D1 Database binding
@@ -248,39 +269,88 @@ database_name = "taskinfa-kanban-db"
 database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
 ```
 
-**Key Points:**
-- `main` = Worker entry point (required for Workers deployment)
-- `[assets]` = ASSETS binding (static files served by worker)
-- NO `pages_build_output_dir` (that's for Pages, not Workers)
+**Critical Requirements:**
+- `main` must point to `.open-next/worker.js` (not `.vercel/...`)
+- `compatibility_flags` must include `["nodejs_compat"]`
+- `compatibility_date` must be `2026-01-16` or later
+- `[assets]` directory must be `.open-next/assets` (not `.vercel/...`)
 
-### .assetsignore File
+#### 2. open-next.config.ts
 
-Create `.vercel/output/static/.assetsignore` to exclude worker code from assets:
+```typescript
+import type { OpenNextConfig } from '@opennextjs/cloudflare';
+
+const config: OpenNextConfig = {
+  default: {
+    override: {
+      wrapper: 'cloudflare-node',
+      converter: 'edge',
+      proxyExternalRequest: 'fetch',
+      incrementalCache: 'dummy',
+      tagCache: 'dummy',
+      queue: 'dummy',
+    },
+  },
+  edgeExternals: ['node:crypto'],
+  middleware: {
+    external: true,
+    override: {
+      wrapper: 'cloudflare-edge',
+      converter: 'edge',
+      proxyExternalRequest: 'fetch',
+      incrementalCache: 'dummy',
+      tagCache: 'dummy',
+      queue: 'dummy',
+    },
+  },
+};
+
+export default config;
 ```
-_worker.js
-_worker.js/*
+
+**This file is required** for `@opennextjs/cloudflare` to work.
+
+#### 3. package.json Scripts
+
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:prod": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local --file=./migrations/003_add_users.sql",
+    "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-db --remote --file=./migrations/003_add_users.sql"
+  }
+}
 ```
 
 ### Environment Variables
 
-Set in Cloudflare Workers dashboard (not Pages):
-1. Go to Workers & Pages → taskinfa-kanban → Settings → Variables
-2. Add environment variables:
-   - `JWT_SECRET` (required)
-   - `SESSION_SECRET` (required)
-   - `BCRYPT_ROUNDS` (optional, defaults to 12)
-   - `SESSION_MAX_AGE` (optional, defaults to 604800)
+Set in Cloudflare Workers dashboard:
+
+1. Go to: **Workers & Pages** → **taskinfa-kanban** → **Settings** → **Variables**
+2. Add these secrets:
+   - `JWT_SECRET` (required) - 256-bit secret key
+   - `SESSION_SECRET` (optional, falls back to JWT_SECRET)
+   - `BCRYPT_ROUNDS` (optional, default: 12)
+   - `SESSION_MAX_AGE` (optional, default: 604800)
 
 ### Database Migrations
 
 **Local Database:**
 ```bash
+npm run db:migrate
+# or
 npx wrangler d1 execute taskinfa-kanban-db --local \
   --file=./migrations/003_add_users.sql
 ```
 
 **Production Database:**
 ```bash
+npm run db:migrate:prod
+# or
 npx wrangler d1 execute taskinfa-kanban-db --remote \
   --file=./migrations/003_add_users.sql
 ```
@@ -288,59 +358,144 @@ npx wrangler d1 execute taskinfa-kanban-db --remote \
 ### Deployment Checklist
 
 **Before Deploying:**
-- [ ] Test in local environment with `npm run dev`
-- [ ] Build successfully with `npx @cloudflare/next-on-pages`
-- [ ] Run database migrations (if needed)
-- [ ] Verify environment variables are set in Workers dashboard
-- [ ] Check `.assetsignore` exists in `.vercel/output/static/`
+- [ ] All changes committed to git
+- [ ] `open-next.config.ts` exists with correct config
+- [ ] `wrangler.toml` points to `.open-next/` (not `.vercel/`)
+- [ ] No `export const runtime = 'edge';` in route files
+- [ ] Environment variables set in Workers dashboard
+- [ ] Database migrations applied (if needed)
 
 **Deploy:**
 ```bash
-# Build
-npx @cloudflare/next-on-pages
-
-# Deploy to Workers (NOT Pages!)
-npx wrangler deploy
+cd packages/dashboard
+npm run deploy:prod
 ```
 
 **Verify:**
 - [ ] Visit https://taskinfa-kanban.secan-ltd.workers.dev
-- [ ] Check bindings in Workers dashboard (ASSETS + DB)
+- [ ] Check bindings in dashboard: `env.DB` (D1) + `env.ASSETS`
 - [ ] Test signup/login functionality
-- [ ] Test API endpoints
+- [ ] Check browser console for errors
+
+### CRITICAL: Don't Use Edge Runtime
+
+❌ **DO NOT add this to route files:**
+```typescript
+export const runtime = 'edge';  // ❌ WRONG for @opennextjs/cloudflare
+```
+
+✅ **Correct approach:**
+```typescript
+// No runtime export needed!
+// @opennextjs/cloudflare uses Node.js runtime automatically
+export async function POST(request: NextRequest) {
+  // Your code here
+}
+```
 
 ### Common Mistakes to Avoid
 
-❌ **WRONG:** Using `wrangler pages deploy`
-- This deploys to Cloudflare Pages (*.pages.dev URLs)
-- Creates a separate Pages project
-- Doesn't use your Workers configuration
+#### ❌ Using Deprecated Package
+```bash
+# WRONG - deprecated package
+npm install @cloudflare/next-on-pages
+npx @cloudflare/next-on-pages
+wrangler pages deploy .vercel/output/static
+```
 
-✅ **CORRECT:** Using `wrangler deploy`
-- Deploys to Cloudflare Workers (*.workers.dev URL)
-- Uses bindings from wrangler.toml (ASSETS + D1)
-- Matches your production environment
+#### ✅ Using Current Package
+```bash
+# CORRECT - current package
+npm install @opennextjs/cloudflare
+npm run deploy:prod
+```
 
-❌ **WRONG:** Adding `pages_build_output_dir` to wrangler.toml
-- Makes wrangler think this is a Pages project
+#### ❌ Wrong Build Output Paths
+```toml
+# WRONG - old paths from deprecated package
+main = ".vercel/output/static/_worker.js/index.js"
+[assets]
+directory = ".vercel/output/static"
+```
 
-✅ **CORRECT:** Using `main` and `[assets]` in wrangler.toml
-- Configures proper Workers deployment with ASSETS binding
+#### ✅ Correct Build Output Paths
+```toml
+# CORRECT - paths for @opennextjs/cloudflare
+main = ".open-next/worker.js"
+[assets]
+directory = ".open-next/assets"
+```
+
+#### ❌ Adding Edge Runtime Exports
+```typescript
+// WRONG - breaks @opennextjs/cloudflare
+export const runtime = 'edge';
+```
+
+#### ✅ No Runtime Export
+```typescript
+// CORRECT - use default Node.js runtime
+// (no export needed)
+```
 
 ### Troubleshooting
 
-**Error: "It looks like you've run a Workers-specific command in a Pages project"**
-- Check wrangler.toml has `main` (not `pages_build_output_dir`)
-- Remove any Pages-specific configuration
+**Error: "Cannot find package '@cloudflare/next-on-pages'"**
+- ✅ Solution: This package is deprecated. Remove it and use `@opennextjs/cloudflare` instead
+- Run: `npm uninstall @cloudflare/next-on-pages && npm install @opennextjs/cloudflare`
 
-**Error: "Uploading a Pages _worker.js directory as an asset"**
-- Create `.assetsignore` file in `.vercel/output/static/`
-- Add `_worker.js` and `_worker.js/*` to ignore list
+**Error: "app/api/auth/login/route cannot use the edge runtime"**
+- ✅ Solution: Remove all `export const runtime = 'edge';` from your route files
+- `@opennextjs/cloudflare` uses Node.js runtime, not Edge runtime
+
+**Error: "Missing required open-next.config.ts file"**
+- ✅ Solution: Create `open-next.config.ts` in project root with proper configuration
+- See configuration example above
+
+**Error: "D1 database binding not found"**
+- ✅ Check `wrangler.toml` has correct D1 binding configuration
+- ✅ Verify `compatibility_flags` includes `["nodejs_compat"]`
+- ✅ Check `compatibility_date` is `2026-01-16` or later
 
 **Bindings not working:**
-- Verify `[assets]` section exists in wrangler.toml
-- Check D1 database ID matches production database
-- Confirm environment variables are set in Workers dashboard (not Pages)
+- ✅ Check deployment logs show: `env.DB (taskinfa-kanban-db)` and `env.ASSETS`
+- ✅ Verify wrangler.toml has correct `[assets]` and `[[d1_databases]]` sections
+- ✅ Ensure environment variables are set in **Workers** dashboard (not Pages)
+
+### Migration from Old System
+
+If you previously used `@cloudflare/next-on-pages`:
+
+1. **Uninstall deprecated package:**
+   ```bash
+   npm uninstall @cloudflare/next-on-pages
+   ```
+
+2. **Install new package:**
+   ```bash
+   npm install @opennextjs/cloudflare wrangler@latest esbuild
+   ```
+
+3. **Update wrangler.toml:**
+   - Change `main` from `.vercel/output/static/_worker.js/index.js` to `.open-next/worker.js`
+   - Change `[assets] directory` from `.vercel/output/static` to `.open-next/assets`
+   - Update `compatibility_date` to `2026-01-16` or later
+
+4. **Create open-next.config.ts** (see example above)
+
+5. **Remove Edge Runtime exports:**
+   ```bash
+   find src/app -type f \( -name "*.tsx" -o -name "route.ts" \) \
+     -exec sed -i '' '/^export const runtime = .edge.;$/d' {} \;
+   ```
+
+6. **Update .gitignore:**
+   - Replace `.vercel/` with `.open-next/`
+
+7. **Deploy:**
+   ```bash
+   npm run deploy:prod
+   ```
 
 ## Repository Conventions
 

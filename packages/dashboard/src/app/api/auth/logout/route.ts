@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearSessionCookie } from '@/lib/auth/session';
 
-export const runtime = 'edge';
 
 export async function POST(request: NextRequest) {
   try {

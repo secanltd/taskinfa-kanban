@@ -7,7 +7,6 @@ import { getDb, query, execute } from '@/lib/db/client';
 import type { Task, ListTasksRequest, CreateTaskRequest } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
 
-export const runtime = 'edge';
 
 // GET /api/tasks - List tasks
 export async function GET(request: NextRequest) {

@@ -30,7 +30,7 @@ export default function ApiKeyList() {
         throw new Error('Failed to fetch API keys');
       }
 
-      const data = await response.json();
+      const data = await response.json() as { keys: any[] };
       setKeys(data.keys);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

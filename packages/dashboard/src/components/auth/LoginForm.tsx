@@ -49,7 +49,7 @@ export default function LoginForm() {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      const data = await response.json() as { error?: string };
 
       if (!response.ok) {
         setErrors({ general: data.error || 'Login failed' });

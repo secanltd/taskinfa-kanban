@@ -100,7 +100,7 @@ export default function SignupForm() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json() as { error?: string; details?: string[] };
 
       if (!response.ok) {
         if (data.details && Array.isArray(data.details)) {

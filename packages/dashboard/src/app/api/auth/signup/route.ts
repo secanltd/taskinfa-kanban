@@ -7,14 +7,14 @@ import { createSession, setSessionCookie } from '@/lib/auth/session';
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import type { SignupRequest, SignupResponse, User, Workspace } from '@taskinfa/shared';
 
-export const runtime = 'edge';
 
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  const rateLimit = checkRateLimit(request, 'signup', RATE_LIMITS.SIGNUP);
-  if (!rateLimit.allowed) {
-    return createRateLimitResponse(rateLimit.resetAt);
-  }
+  // Rate limiting - TEMPORARILY DISABLED (in-memory rate limiting doesn't work in Workers)
+  // TODO: Implement proper rate limiting using Cloudflare Rate Limiting API or Durable Objects
+  // const rateLimit = checkRateLimit(request, 'signup', RATE_LIMITS.SIGNUP);
+  // if (!rateLimit.allowed) {
+  //   return createRateLimitResponse(rateLimit.resetAt);
+  // }
 
   try {
     const body: SignupRequest = await request.json();

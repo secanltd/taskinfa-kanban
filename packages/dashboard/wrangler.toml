@@ -1,11 +1,17 @@
 name = "taskinfa-kanban"
-main = ".vercel/output/static/_worker.js/index.js"
-compatibility_date = "2024-01-01"
+main = ".open-next/worker.js"
+compatibility_date = "2026-01-16"
 compatibility_flags = ["nodejs_compat"]
 
-# Assets binding for static files (images, CSS, JS)
+# Observability - Enable logs for debugging
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+# Assets binding for static files (CSS, JS, images)
 [assets]
-directory = ".vercel/output/static"
+directory = ".open-next/assets"
 binding = "ASSETS"
 
 # D1 Database binding

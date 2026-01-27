@@ -9,7 +9,7 @@ out/
 dist/
 build/
 .turbo/
-.vercel/
+.open-next/
 
 # Environment files
 .env

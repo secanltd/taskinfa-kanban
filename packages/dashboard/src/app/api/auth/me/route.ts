@@ -3,7 +3,6 @@ import { getDb, queryOne } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
 import type { GetMeResponse, User, Workspace } from '@taskinfa/shared';
 
-export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
   try {

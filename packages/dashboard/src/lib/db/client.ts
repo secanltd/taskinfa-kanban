@@ -1,5 +1,6 @@
 // D1 Database Client
 // This module provides a simple interface to Cloudflare D1 database
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -26,14 +27,16 @@ export interface D1ExecResult {
   duration: number;
 }
 
-// Get D1 database instance from environment
+// Get D1 database instance from Cloudflare Workers environment
+// With @opennextjs/cloudflare, use getCloudflareContext() to access bindings
 export function getDb(): D1Database {
-  // In Cloudflare Workers/Pages, access via process.env
-  const env = process.env as any;
+  const { env } = getCloudflareContext();
+
   if (!env.DB) {
     throw new Error('D1 database binding not found. Make sure DB is configured in wrangler.toml');
   }
-  return env.DB;
+
+  return env.DB as D1Database;
 }
 
 // Helper to execute a query and return results
