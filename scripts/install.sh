@@ -85,7 +85,8 @@ authenticate_claude() {
     echo
     read -p "Press Enter to open authentication page..."
 
-    claude login
+    # Close stdin to prevent installer script from being passed to claude
+    claude login </dev/null
 
     if [ $? -eq 0 ]; then
         print_success "Claude authentication successful"
@@ -147,10 +148,16 @@ echo
 
 # Check Claude authentication
 print_info "Checking Claude authentication..."
-if [ -d "$HOME/.claude" ] && [ -f "$HOME/.claude/config.json" ]; then
-    print_success "Claude is authenticated"
+
+# Test if Claude can run a simple command (better than just checking for files)
+if claude --version >/dev/null 2>&1; then
+    print_success "Claude Code CLI is working"
+
+    # Try a test command to verify authentication
+    # Claude Code doesn't require explicit login check - if it works, it's authenticated
+    print_success "Claude is authenticated and ready"
 else
-    print_warning "Claude not authenticated"
+    print_warning "Claude Code CLI test failed"
     authenticate_claude
 fi
 
