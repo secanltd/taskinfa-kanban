@@ -197,16 +197,17 @@ echo -e "${YELLOW}Before continuing, you need to set up your Taskinfa account:${
 echo
 echo -e "  1. Go to: ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev${NC}"
 echo "  2. Create an account (or log in if you have one)"
-echo -e "  3. Go to the ${BLUE}Projects${NC} page"
-echo "  4. Create a new project (e.g., 'my-first-project')"
-echo -e "  5. Note the ${BLUE}Project ID${NC} (e.g., 'my-first-project')"
-echo -e "  6. Go to ${BLUE}Settings${NC} → API Keys"
-echo "  7. Create a new API key"
-echo "  8. Copy the API key (shown only once!)"
+echo -e "  3. Go to the ${BLUE}Projects${NC} page and create a new project"
+echo -e "     Note the ${BLUE}Project ID${NC} (e.g., 'my-first-project')"
+echo -e "  4. Go to ${BLUE}Settings${NC} page"
+echo -e "     Note your ${BLUE}Workspace ID${NC} (e.g., 'JygVRBYxD7dJS5fjdG2gM')"
+echo -e "  5. Go to ${BLUE}Settings${NC} → ${BLUE}API Keys${NC}"
+echo "     Create a new API key and copy it (shown only once!)"
 echo
 echo -e "${YELLOW}Come back here when you have:${NC}"
 echo "  • Your API key"
-echo "  • Your project ID"
+echo "  • Your Workspace ID"
+echo "  • Your Project ID"
 echo
 read -p "Press Enter when ready to continue..."
 
@@ -240,8 +241,20 @@ read -p "Enter worker name [Worker-1]: " WORKER_NAME
 WORKER_NAME=${WORKER_NAME:-Worker-1}
 
 # Get Workspace ID
-read -p "Enter workspace ID [default]: " WORKSPACE_ID
-WORKSPACE_ID=${WORKSPACE_ID:-default}
+echo
+echo -e "${YELLOW}Workspace ID:${NC}"
+echo "Find your Workspace ID in the Taskinfa dashboard at:"
+echo -e "${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev/settings${NC}"
+echo "It's shown in the 'Workspace' section (e.g., 'JygVRBYxD7dJS5fjdG2gM')"
+echo
+read -p "Enter your Workspace ID: " WORKSPACE_ID
+
+# Validate workspace ID is not empty
+while [ -z "$WORKSPACE_ID" ]; do
+    print_error "Workspace ID cannot be empty"
+    echo "Please enter your Workspace ID from the Settings page:"
+    read -p "Enter your Workspace ID: " WORKSPACE_ID
+done
 
 # Get GitHub Token (optional, for private repos)
 echo
@@ -259,10 +272,10 @@ read -p "Enter GitHub Personal Access Token (leave empty to skip): " GITHUB_TOKE
 
 echo
 print_success "Configuration collected"
-echo "  API Key: ${API_KEY:0:20}..."
+echo "  Workspace ID: $WORKSPACE_ID"
 echo "  Project ID: $PROJECT_ID"
 echo "  Worker Name: $WORKER_NAME"
-echo "  Workspace ID: $WORKSPACE_ID"
+echo "  API Key: ${API_KEY:0:20}..."
 if [ -n "$GITHUB_TOKEN" ]; then
     echo "  GitHub Token: ${GITHUB_TOKEN:0:10}... (configured)"
 else
