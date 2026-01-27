@@ -195,12 +195,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo
 echo -e "${YELLOW}Before continuing, you need to set up your Taskinfa account:${NC}"
 echo
-echo "  1. Go to: ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev${NC}"
+echo -e "  1. Go to: ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev${NC}"
 echo "  2. Create an account (or log in if you have one)"
-echo "  3. Go to the ${BLUE}Projects${NC} page"
+echo -e "  3. Go to the ${BLUE}Projects${NC} page"
 echo "  4. Create a new project (e.g., 'my-first-project')"
-echo "  5. Note the ${BLUE}Project ID${NC} (e.g., 'my-first-project')"
-echo "  6. Go to ${BLUE}Settings${NC} → API Keys"
+echo -e "  5. Note the ${BLUE}Project ID${NC} (e.g., 'my-first-project')"
+echo -e "  6. Go to ${BLUE}Settings${NC} → API Keys"
 echo "  7. Create a new API key"
 echo "  8. Copy the API key (shown only once!)"
 echo
@@ -250,9 +250,9 @@ echo "If your project uses a private GitHub repository, you'll need to provide a
 echo "You can skip this if your repository is public."
 echo
 echo "To create a token:"
-echo "  1. Go to: ${BLUE}https://github.com/settings/tokens${NC}"
+echo -e "  1. Go to: ${BLUE}https://github.com/settings/tokens${NC}"
 echo "  2. Click 'Generate new token (classic)'"
-echo "  3. Select scopes: ${BLUE}repo${NC} (for private repos)"
+echo -e "  3. Select scopes: ${BLUE}repo${NC} (for private repos)"
 echo "  4. Copy the token"
 echo
 read -p "Enter GitHub Personal Access Token (leave empty to skip): " GITHUB_TOKEN
@@ -380,24 +380,24 @@ echo -e "${GREEN}╚════════════════════
 echo
 echo "Your Taskinfa worker has been set up successfully!"
 echo
-echo "Worker directory: ${BLUE}$WORKER_DIR${NC}"
+echo -e "Worker directory: ${BLUE}$WORKER_DIR${NC}"
 echo
 echo "Next steps:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 echo "1. Create tasks in the Taskinfa dashboard:"
-echo "   ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev/dashboard${NC}"
+echo -e "   ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev/dashboard${NC}"
 echo
 echo "2. Start the worker:"
-echo "   ${BLUE}cd $WORKER_DIR${NC}"
-echo "   ${BLUE}./start.sh${NC}"
+echo -e "   ${BLUE}cd $WORKER_DIR${NC}"
+echo -e "   ${BLUE}./start.sh${NC}"
 echo
 echo "3. View worker logs:"
-echo "   ${BLUE}tail -f $WORKER_DIR/logs/worker.log${NC}"
+echo -e "   ${BLUE}tail -f $WORKER_DIR/logs/worker.log${NC}"
 echo
 echo "4. Stop the worker:"
-echo "   ${BLUE}cd $WORKER_DIR${NC}"
-echo "   ${BLUE}./stop.sh${NC}"
+echo -e "   ${BLUE}cd $WORKER_DIR${NC}"
+echo -e "   ${BLUE}./stop.sh${NC}"
 echo
 echo "For help and documentation:"
 echo "  • Documentation: https://github.com/secanltd/taskinfa-kanban"
