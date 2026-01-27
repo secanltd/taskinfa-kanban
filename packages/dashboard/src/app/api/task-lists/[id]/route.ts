@@ -2,7 +2,7 @@
 // Get, update, and delete task lists
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth/jwt';
+import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
 import type { TaskList } from '@taskinfa/shared';
 import {
@@ -19,7 +19,7 @@ export async function GET(
 ) {
   try {
     const params = await segmentData.params;
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -50,7 +50,7 @@ export async function PATCH(
 ) {
   const params = await segmentData.params;
   try {
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -143,7 +143,7 @@ export async function DELETE(
 ) {
   try {
     const params = await segmentData.params;
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }

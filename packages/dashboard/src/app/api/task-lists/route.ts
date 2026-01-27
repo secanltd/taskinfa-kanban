@@ -2,7 +2,7 @@
 // List and create task lists (projects)
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth/jwt';
+import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
 import type { TaskList } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
@@ -16,8 +16,8 @@ import {
 // GET /api/task-lists - List task lists
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate
-    const auth = await authenticateRequest(request);
+    // Authenticate (supports both session cookies and API keys)
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_task_lists',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
 // POST /api/task-lists - Create task list
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate
-    const auth = await authenticateRequest(request);
+    // Authenticate (supports both session cookies and API keys)
+    const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'create_task_list',
-      workspaceId: (await authenticateRequest(request))?.workspaceId,
+      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }

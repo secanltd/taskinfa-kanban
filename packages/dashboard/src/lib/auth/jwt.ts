@@ -115,7 +115,7 @@ async function hashKey(key: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Middleware to protect API routes
+// Middleware to protect API routes (API key only)
 export async function authenticateRequest(request: Request): Promise<ApiKeyPayload | null> {
   const authHeader = request.headers.get('authorization');
 
@@ -125,4 +125,45 @@ export async function authenticateRequest(request: Request): Promise<ApiKeyPaylo
 
   const apiKey = authHeader.substring(7);
   return await verifyApiKey(apiKey);
+}
+
+// Unified authentication: supports both session cookies (web UI) and API keys (workers)
+export async function authenticateRequestUnified(request: Request): Promise<{ userId?: string; workspaceId: string } | null> {
+  // First, try session cookie authentication (for web UI)
+  const cookieHeader = request.headers.get('cookie');
+  if (cookieHeader) {
+    const cookies = Object.fromEntries(
+      cookieHeader.split('; ').map(c => {
+        const [key, ...values] = c.split('=');
+        return [key, values.join('=')];
+      })
+    );
+
+    const sessionToken = cookies['session_token'];
+    if (sessionToken) {
+      // Import verifySessionToken dynamically to avoid circular dependencies
+      const { verifySessionToken } = await import('./session');
+      const session = await verifySessionToken(sessionToken);
+      if (session) {
+        return {
+          userId: session.userId,
+          workspaceId: session.workspaceId,
+        };
+      }
+    }
+  }
+
+  // Fall back to API key authentication (for workers/API clients)
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const apiKey = authHeader.substring(7);
+    const payload = await verifyApiKey(apiKey);
+    if (payload) {
+      return {
+        workspaceId: payload.workspaceId,
+      };
+    }
+  }
+
+  return null;
 }
