@@ -5,86 +5,220 @@
 
 set -euo pipefail
 
-# Configuration (from environment)
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load environment from .env file
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+else
+    echo "ERROR: .env file not found at $SCRIPT_DIR/.env"
+    exit 1
+fi
+
+# Ensure logs directory exists
+mkdir -p "$SCRIPT_DIR/logs"
+
+# Configuration
 WORKSPACE_ID="${WORKSPACE_ID:-default}"
 TASK_LIST_ID="${TASK_LIST_ID:-default}"
 WORKER_NAME="${WORKER_NAME:-Worker-1}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
-MCP_SERVER_CMD="${MCP_SERVER_CMD:-node}"
-MCP_SERVER_ARGS="${MCP_SERVER_ARGS:-/app/mcp/server.js}"
+TASKINFA_API_KEY="${TASKINFA_API_KEY:-}"
+TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
-# Claude Code configuration
-export CLAUDE_CODE_TASK_LIST_ID="taskinfa-${TASK_LIST_ID}"
-export CLAUDE_CODE_ENABLE_TASKS=true
+# Workspace directory
+WORKSPACE_DIR="$SCRIPT_DIR/workspace"
+mkdir -p "$WORKSPACE_DIR"
 
 # Configure Git credentials for private repos
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    echo "🔑 Configuring GitHub authentication..."
+if [ -n "${GITHUB_TOKEN}" ]; then
+    echo "Configuring GitHub authentication..."
     git config --global credential.helper store
-    mkdir -p ~/.git-credentials-dir
-    echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
+    echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > "$HOME/.git-credentials"
+    chmod 600 "$HOME/.git-credentials"
     git config --global credential.helper "store --file=$HOME/.git-credentials"
+    GITHUB_STATUS="Configured"
+else
+    GITHUB_STATUS="Not configured (public repos only)"
 fi
 
-echo "🚀 Taskinfa Worker starting..."
-echo "   Workspace: ${WORKSPACE_ID}"
-echo "   Task List: ${TASK_LIST_ID}"
-echo "   Worker: ${WORKER_NAME}"
-echo "   Claude Task List ID: ${CLAUDE_CODE_TASK_LIST_ID}"
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    echo "   GitHub Auth: ✅ Configured"
-else
-    echo "   GitHub Auth: ⚠️  Not configured (public repos only)"
-fi
+echo "========================================"
+echo "   Taskinfa Worker starting..."
+echo "========================================"
+echo "   Workspace ID: ${WORKSPACE_ID}"
+echo "   Task List ID: ${TASK_LIST_ID}"
+echo "   Worker Name: ${WORKER_NAME}"
+echo "   API URL: ${TASKINFA_API_URL}"
+echo "   GitHub Auth: ${GITHUB_STATUS}"
+echo "   Working Dir: ${WORKSPACE_DIR}"
+echo "========================================"
 echo
 
-# Skill prompt that gets passed to Claude Code
-SKILL_PROMPT="
-You are working as an autonomous task worker using the taskinfa-kanban skill.
+# Function to fetch next task
+fetch_next_task() {
+    local response
+    response=$(curl -s -X GET \
+        "${TASKINFA_API_URL}/tasks?task_list_id=${TASK_LIST_ID}&status=todo&limit=1" \
+        -H "Authorization: Bearer ${TASKINFA_API_KEY}" \
+        -H "Content-Type: application/json")
 
-Your mission: Execute tasks for the '${TASK_LIST_ID}' project.
+    echo "$response"
+}
 
-Project Context:
-- Task List ID: ${TASK_LIST_ID}
-- Worker ID: ${WORKER_NAME}
-- Workspace: ${WORKSPACE_ID}
+# Function to update task status
+update_task_status() {
+    local task_id="$1"
+    local status="$2"
+    local notes="${3:-}"
 
-Workflow:
-1. Use get_task_list(task_list_id='${TASK_LIST_ID}') to get project info
-2. Check if project exists, if not clone repository from task list metadata
-3. Use list_tasks(task_list_id='${TASK_LIST_ID}', status='todo') to fetch tasks
-4. Claim highest priority task and set status='in_progress'
-5. CD into project directory and execute task
-6. Mark complete with status='review' and detailed notes
-7. Repeat until no more tasks
+    local body="{\"status\": \"${status}\""
+    if [ -n "$notes" ]; then
+        # Escape quotes in notes
+        notes=$(echo "$notes" | sed 's/"/\\"/g' | tr '\n' ' ')
+        body="${body}, \"completion_notes\": \"${notes}\""
+    fi
+    body="${body}}"
 
-Begin by checking project status and fetching the next task.
-"
+    curl -s -X PATCH \
+        "${TASKINFA_API_URL}/tasks/${task_id}" \
+        -H "Authorization: Bearer ${TASKINFA_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "$body"
+}
+
+# Function to get task list info (for repo URL)
+get_task_list_info() {
+    curl -s -X GET \
+        "${TASKINFA_API_URL}/task-lists/${TASK_LIST_ID}" \
+        -H "Authorization: Bearer ${TASKINFA_API_KEY}" \
+        -H "Content-Type: application/json"
+}
+
+# Function to setup project
+setup_project() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Checking project setup..."
+
+    local task_list_info
+    task_list_info=$(get_task_list_info)
+
+    local repo_url
+    repo_url=$(echo "$task_list_info" | jq -r '.task_list.repository_url // empty')
+
+    if [ -z "$repo_url" ]; then
+        echo "   No repository URL configured for this project"
+        return 0
+    fi
+
+    # Convert SSH URL to HTTPS if needed
+    if [[ "$repo_url" == git@github.com:* ]]; then
+        repo_url=$(echo "$repo_url" | sed 's|git@github.com:|https://github.com/|')
+    fi
+
+    local project_dir="$WORKSPACE_DIR/$TASK_LIST_ID"
+
+    if [ -d "$project_dir/.git" ]; then
+        echo "   Project already cloned at $project_dir"
+        cd "$project_dir"
+        git pull --ff-only 2>/dev/null || echo "   (Could not pull latest changes)"
+    else
+        echo "   Cloning repository: $repo_url"
+        git clone "$repo_url" "$project_dir"
+        cd "$project_dir"
+        echo "   Project cloned successfully"
+    fi
+}
 
 # Main loop
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Worker started. Polling every ${POLL_INTERVAL}s..."
+echo
+
+# Setup project on first run
+setup_project
+
 while true; do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Checking for tasks..."
 
-    # Start Claude Code session with MCP server
-    # The --dangerously-skip-permissions flag gives full autonomy
-    # The skill will guide Claude through the task workflow
-    claude code \
-        --mcp-server "${MCP_SERVER_CMD}" \
-        --mcp-server-args "${MCP_SERVER_ARGS}" \
-        --dangerously-skip-permissions \
-        --prompt "${SKILL_PROMPT}" \
-        2>&1 | tee -a "/var/log/worker/session-$(date +%s).log"
+    # Fetch next task
+    response=$(fetch_next_task)
 
-    EXIT_CODE=$?
+    # Check if we got tasks
+    task_count=$(echo "$response" | jq -r '.total // 0')
 
-    if [ $EXIT_CODE -eq 0 ]; then
-        echo "✅ Session completed successfully"
-    else
-        echo "⚠️  Session exited with code ${EXIT_CODE}"
+    if [ "$task_count" -eq 0 ]; then
+        echo "   No tasks in 'todo' status. Waiting..."
+        sleep "${POLL_INTERVAL}"
+        continue
     fi
 
+    # Extract task details
+    task_id=$(echo "$response" | jq -r '.tasks[0].id')
+    task_title=$(echo "$response" | jq -r '.tasks[0].title')
+    task_description=$(echo "$response" | jq -r '.tasks[0].description // "No description"')
+    task_priority=$(echo "$response" | jq -r '.tasks[0].priority // "medium"')
+
+    echo "   Found task: $task_title"
+    echo "   Task ID: $task_id"
+    echo "   Priority: $task_priority"
+    echo
+
+    # Update status to in_progress
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Claiming task..."
+    update_task_status "$task_id" "in_progress" > /dev/null
+
+    # Prepare prompt for Claude
+    PROJECT_DIR="$WORKSPACE_DIR/$TASK_LIST_ID"
+
+    CLAUDE_PROMPT="You are an autonomous task worker. Execute the following task:
+
+TASK: ${task_title}
+
+DESCRIPTION:
+${task_description}
+
+PRIORITY: ${task_priority}
+
+INSTRUCTIONS:
+1. Analyze what needs to be done
+2. Make the necessary changes to accomplish the task
+3. Test your changes if applicable
+4. Provide a summary of what you did
+
+The project is located at: ${PROJECT_DIR}
+Work autonomously and complete this task."
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Claude Code session..."
+
+    # Run Claude Code
+    SESSION_LOG="$SCRIPT_DIR/logs/session-$(date +%Y%m%d-%H%M%S)-${task_id}.log"
+
+    cd "$PROJECT_DIR" 2>/dev/null || cd "$WORKSPACE_DIR"
+
+    # Run claude with the prompt
+    if claude -p "$CLAUDE_PROMPT" --dangerously-skip-permissions 2>&1 | tee "$SESSION_LOG"; then
+        echo
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Task completed successfully"
+
+        # Get completion notes from last lines of log
+        completion_notes="Task completed by ${WORKER_NAME}. See session log for details."
+
+        # Update status to review
+        update_task_status "$task_id" "review" "$completion_notes" > /dev/null
+        echo "   Status updated to 'review'"
+    else
+        echo
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Task execution had errors"
+
+        # Keep in progress or move back to todo based on error
+        update_task_status "$task_id" "todo" "Execution failed. Worker: ${WORKER_NAME}" > /dev/null
+        echo "   Status reverted to 'todo'"
+    fi
+
+    echo
     echo "   Waiting ${POLL_INTERVAL}s before next check..."
     echo
-    sleep ${POLL_INTERVAL}
+    sleep "${POLL_INTERVAL}"
 done
