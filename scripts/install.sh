@@ -7,13 +7,14 @@ set -e
 
 # Detect if script is being piped from curl
 # If so, download it and re-run interactively
-# But only if we're not already running from /tmp (prevent infinite loop)
-if [ ! -t 0 ] && [[ "$0" != /tmp/taskinfa-install.* ]]; then
+# But only if we're not already running from a temp file (prevent infinite loop)
+if [ ! -t 0 ] && [[ "$0" != *taskinfa-install* ]]; then
     echo "Detected non-interactive mode (piped from curl)."
     echo "Downloading installer for interactive execution..."
     echo
 
-    TEMP_SCRIPT=$(mktemp /tmp/taskinfa-install.XXXXXX.sh)
+    # Use mktemp with -t flag for better cross-platform compatibility
+    TEMP_SCRIPT=$(mktemp -t taskinfa-install.XXXXXX)
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh -o "$TEMP_SCRIPT"
