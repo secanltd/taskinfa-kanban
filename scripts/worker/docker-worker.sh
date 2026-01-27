@@ -165,7 +165,8 @@ Work in the current directory: ${project_dir}"
 
     # Run Claude Code with the prompt
     # Using --dangerously-skip-permissions for autonomous operation
-    if claude -p "$prompt" --dangerously-skip-permissions 2>&1 | tee "$log_file"; then
+    # Using --model default for automatic Opus/Sonnet switching based on usage
+    if claude -p "$prompt" --dangerously-skip-permissions --model default 2>&1 | tee "$log_file"; then
         return 0
     else
         return 1
