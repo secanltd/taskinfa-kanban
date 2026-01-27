@@ -104,29 +104,30 @@ update_task() {
 }
 
 # Ensure project repository is cloned and up to date
+# Note: Log messages go to stderr so they don't pollute the return value
 ensure_project() {
     local project_id="$1"
     local repo_url="$2"
     local project_dir="${WORKSPACE_DIR}/${project_id}"
 
     if [ -d "$project_dir/.git" ]; then
-        log_info "Project ${project_id} already cloned, pulling latest..."
+        log_info "Project ${project_id} already cloned, pulling latest..." >&2
         cd "$project_dir"
-        git pull --ff-only 2>/dev/null || log_warn "Could not pull latest changes"
+        git pull --ff-only 2>/dev/null || log_warn "Could not pull latest changes" >&2
     elif [ -n "$repo_url" ]; then
-        log_info "Cloning project ${project_id} from ${repo_url}..."
+        log_info "Cloning project ${project_id} from ${repo_url}..." >&2
 
         # Convert SSH URL to HTTPS if needed
         if [[ "$repo_url" == git@github.com:* ]]; then
             repo_url=$(echo "$repo_url" | sed 's|git@github.com:|https://github.com/|')
         fi
 
-        git clone "$repo_url" "$project_dir" || {
-            log_error "Failed to clone repository"
+        git clone "$repo_url" "$project_dir" >&2 || {
+            log_error "Failed to clone repository" >&2
             return 1
         }
     else
-        log_info "No repository URL, creating empty project directory..."
+        log_info "No repository URL, creating empty project directory..." >&2
         mkdir -p "$project_dir"
     fi
 
