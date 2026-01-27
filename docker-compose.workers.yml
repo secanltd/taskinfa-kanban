@@ -1,92 +1,107 @@
+# Taskinfa-Kanban Multi-Project Workers
+# Docker Compose configuration for running multiple isolated workers
+#
+# NEW MODEL: Workers are like "dev employees" with names (e.g., "John", "Sarah")
+# A single worker can work on multiple projects - they fetch the highest
+# priority task across ALL projects and clone repos as needed.
+#
+# Usage:
+#   Single worker:    docker-compose -f docker-compose.workers.yml up worker-john
+#   Multiple workers: docker-compose -f docker-compose.workers.yml --profile multi-worker up
+#   All workers:      docker-compose -f docker-compose.workers.yml --profile multi-worker up -d
+#
+# Required environment variables (set in .env or export):
+#   - TASKINFA_API_KEY: API key for authentication with Taskinfa dashboard
+#   - ANTHROPIC_API_KEY: Claude API key for Claude Code CLI
+#   - GITHUB_TOKEN: (Optional) For cloning private repositories
+
 version: '3.8'
 
 services:
-  # Workers for "company-website" project
-  worker-company-website-1:
+  # Worker: John
+  # Primary worker for general tasks
+  worker-john:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: worker-company-website-1
+    container_name: taskinfa-worker-john
+    hostname: worker-john
     environment:
-      - WORKSPACE_ID=default
-      - TASK_LIST_ID=company-website
-      - WORKER_NAME=Worker-1
-      - POLL_INTERVAL=30
-      - MCP_SERVER_CMD=node
-      - MCP_SERVER_ARGS=/app/mcp/server.js
+      - WORKER_NAME=John
+      - TASKINFA_API_KEY=${TASKINFA_API_KEY}
+      - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
-      - ./workspace-company-website:/workspace  # Shared workspace for this project
-      - ~/.claude:/home/worker/.claude:ro
-      - ./logs/company-website-1:/var/log/worker
+      # Shared workspace for all projects (persisted between container restarts)
+      - worker-john-workspace:/workspace
+      # Log files (accessible from host)
+      - ./logs/john:/app/logs
     restart: unless-stopped
     networks:
-      - taskinfa-net
+      - taskinfa-workers
 
-  worker-company-website-2:
-    profiles: ["multi-worker"]
+  # Worker: Sarah
+  # Secondary worker for parallel task processing
+  worker-sarah:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: worker-company-website-2
+    container_name: taskinfa-worker-sarah
+    hostname: worker-sarah
     environment:
-      - WORKSPACE_ID=default
-      - TASK_LIST_ID=company-website
-      - WORKER_NAME=Worker-2
-      - POLL_INTERVAL=30
-      - MCP_SERVER_CMD=node
-      - MCP_SERVER_ARGS=/app/mcp/server.js
+      - WORKER_NAME=Sarah
+      - TASKINFA_API_KEY=${TASKINFA_API_KEY}
+      - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
-      - ./workspace-company-website:/workspace  # SAME workspace (shared state)
-      - ~/.claude:/home/worker/.claude:ro
-      - ./logs/company-website-2:/var/log/worker
+      - worker-sarah-workspace:/workspace
+      - ./logs/sarah:/app/logs
     restart: unless-stopped
     networks:
-      - taskinfa-net
+      - taskinfa-workers
+    profiles:
+      - multi-worker
 
-  # Workers for "mobile-app" project (different task list)
-  worker-mobile-app-1:
-    profiles: ["other-projects"]
+  # Worker: Mike
+  # Additional worker for high-volume processing
+  worker-mike:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: worker-mobile-app-1
+    container_name: taskinfa-worker-mike
+    hostname: worker-mike
     environment:
-      - WORKSPACE_ID=default
-      - TASK_LIST_ID=mobile-app
-      - WORKER_NAME=Worker-1
-      - POLL_INTERVAL=30
-      - MCP_SERVER_CMD=node
-      - MCP_SERVER_ARGS=/app/mcp/server.js
+      - WORKER_NAME=Mike
+      - TASKINFA_API_KEY=${TASKINFA_API_KEY}
+      - TASKINFA_API_URL=${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
     volumes:
-      - ./workspace-mobile-app:/workspace  # Different workspace
-      - ~/.claude:/home/worker/.claude:ro
-      - ./logs/mobile-app-1:/var/log/worker
+      - worker-mike-workspace:/workspace
+      - ./logs/mike:/app/logs
     restart: unless-stopped
     networks:
-      - taskinfa-net
+      - taskinfa-workers
+    profiles:
+      - multi-worker
 
-  # Workers for "api-backend" project (different task list)
-  worker-api-backend-1:
-    profiles: ["other-projects"]
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    container_name: worker-api-backend-1
-    environment:
-      - WORKSPACE_ID=default
-      - TASK_LIST_ID=api-backend
-      - WORKER_NAME=Worker-1
-      - POLL_INTERVAL=30
-      - MCP_SERVER_CMD=node
-      - MCP_SERVER_ARGS=/app/mcp/server.js
-    volumes:
-      - ./workspace-api-backend:/workspace  # Different workspace
-      - ~/.claude:/home/worker/.claude:ro
-      - ./logs/api-backend-1:/var/log/worker
-    restart: unless-stopped
-    networks:
-      - taskinfa-net
+# Named volumes for persistent workspaces
+# Each worker has its own isolated workspace to avoid conflicts
+# Projects are cloned into /workspace/{project_id}/ inside each volume
+volumes:
+  worker-john-workspace:
+    driver: local
+  worker-sarah-workspace:
+    driver: local
+  worker-mike-workspace:
+    driver: local
 
+# Network for worker communication
 networks:
-  taskinfa-net:
+  taskinfa-workers:
     driver: bridge

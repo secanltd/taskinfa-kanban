@@ -1,5 +1,5 @@
 {
-  "name": "taskinfa-bot",
+  "name": "taskinfa-kanban",
   "version": "1.0.0",
   "private": true,
   "description": "Autonomous task automation system integrating kanban dashboard with Claude Code",

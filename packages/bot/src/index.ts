@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Taskinfa-Bot CLI Entry Point
+// Taskinfa-Kanban CLI Entry Point
 import { program } from 'commander';
 import { config } from 'dotenv';
 import { TaskExecutor } from './loop/executor.js';
@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 program
-  .name('taskinfa-bot')
+  .name('taskinfa-kanban')
   .description('Autonomous task automation bot for Claude Code')
   .version('1.0.0');
 
@@ -31,7 +31,7 @@ program
   .option('-c, --circuit-breaker <number>', 'Circuit breaker error threshold', '5')
   .option('-n, --no-progress <number>', 'No progress loop threshold', '3')
   .action(async (options) => {
-    console.log(chalk.blue.bold('Taskinfa-Bot v1.0.0'));
+    console.log(chalk.blue.bold('Taskinfa-Kanban v1.0.0'));
     console.log(chalk.gray('Autonomous Task Automation for Claude Code'));
     console.log();
 
@@ -58,7 +58,7 @@ program
   .command('version')
   .description('Display version information')
   .action(() => {
-    console.log(chalk.blue('Taskinfa-Bot v1.0.0'));
+    console.log(chalk.blue('Taskinfa-Kanban v1.0.0'));
     console.log(chalk.gray('Developed by SECAN'));
     console.log(chalk.gray('Licensed under MIT'));
   });

@@ -1,4 +1,4 @@
-// MCP Client for communicating with Taskinfa MCP Server
+// MCP Client for communicating with Taskinfa-Kanban MCP Server
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { CallToolResult, TextContent } from '@modelcontextprotocol/sdk/types.js';
@@ -20,7 +20,7 @@ export class TaskinfaMCPClient {
   constructor() {
     this.client = new Client(
       {
-        name: 'taskinfa-bot-client',
+        name: 'taskinfa-kanban-client',
         version: '1.0.0',
       },
       {
@@ -36,7 +36,7 @@ export class TaskinfaMCPClient {
     });
 
     await this.client.connect(this.transport);
-    console.log('Connected to Taskinfa MCP Server');
+    console.log('Connected to Taskinfa-Kanban MCP Server');
   }
 
   async disconnect(): Promise<void> {

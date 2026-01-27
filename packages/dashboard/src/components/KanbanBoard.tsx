@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { Task, TaskList, TaskStatus } from '@taskinfa/shared';
+import { useTaskStream, WorkerStatus } from '@/hooks/useTaskStream';
+import WorkerStatusPanel from './WorkerStatusPanel';
 
 interface KanbanBoardProps {
   initialTasks: Task[];
@@ -21,6 +23,29 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+
+  // Handle real-time task updates from SSE
+  const handleTasksUpdated = useCallback((updatedTasks: Task[]) => {
+    setTasks((prevTasks) => {
+      // Merge updated tasks with existing tasks
+      const taskMap = new Map(prevTasks.map(t => [t.id, t]));
+      updatedTasks.forEach(task => {
+        taskMap.set(task.id, task);
+      });
+      return Array.from(taskMap.values());
+    });
+  }, []);
+
+  // SSE hook for real-time updates
+  const { workers, connected, onlineCount, workingCount, reconnect } = useTaskStream({
+    onTasksUpdated: handleTasksUpdated,
+    enabled: true,
+  });
+
+  // Helper to get worker working on a task
+  const getWorkerForTask = (taskId: string): WorkerStatus | undefined => {
+    return workers.find(w => w.current_task?.id === taskId);
+  };
 
   const getTasksByStatus = (status: TaskStatus) => {
     return tasks.filter((task) => task.status === status).sort((a, b) => a.order - b.order);
@@ -106,7 +131,35 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
 
   return (
     <>
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      {/* Connection status indicator */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+            }`}
+          />
+          <span className="text-sm text-gray-600">
+            {connected ? 'Live updates' : 'Disconnected'}
+          </span>
+          {!connected && (
+            <button
+              onClick={reconnect}
+              className="text-sm text-blue-600 hover:text-blue-800 underline ml-2"
+            >
+              Reconnect
+            </button>
+          )}
+        </div>
+        <div className="text-sm text-gray-500">
+          {onlineCount} worker{onlineCount !== 1 ? 's' : ''} online
+          {workingCount > 0 && ` (${workingCount} working)`}
+        </div>
+      </div>
+
+      <div className="flex gap-4">
+        {/* Main kanban board */}
+        <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
         {statusColumns.map((column) => {
           const columnTasks = getTasksByStatus(column.status);
           const isDragOver = dragOverColumn === column.status;
@@ -179,6 +232,32 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
                         {task.completion_notes}
                       </div>
                     )}
+
+                    {/* Worker indicator for in-progress tasks */}
+                    {(() => {
+                      const worker = getWorkerForTask(task.id);
+                      if (worker) {
+                        return (
+                          <div className="mt-2 pt-2 border-t flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-xs text-blue-700 font-medium">
+                              {worker.name} is working on this
+                            </span>
+                          </div>
+                        );
+                      }
+                      if (task.assigned_to && task.status === 'in_progress') {
+                        return (
+                          <div className="mt-2 pt-2 border-t flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                            <span className="text-xs text-yellow-700">
+                              Assigned to {task.assigned_to}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 ))}
 
@@ -191,6 +270,18 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
             </div>
           );
         })}
+        </div>
+
+        {/* Worker Status Sidebar */}
+        <div className="w-72 flex-shrink-0">
+          <WorkerStatusPanel
+            workers={workers}
+            connected={connected}
+            onlineCount={onlineCount}
+            workingCount={workingCount}
+            onReconnect={reconnect}
+          />
+        </div>
       </div>
 
       {/* Task Details Modal */}

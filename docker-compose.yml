@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: packages/bot/Dockerfile
-    container_name: taskinfa-bot-john
+    container_name: taskinfa-kanban-john
     environment:
       - BOT_NAME=Bot-John
       - WORKSPACE_ID=${WORKSPACE_ID:-default}
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: packages/bot/Dockerfile
-    container_name: taskinfa-bot-gordon
+    container_name: taskinfa-kanban-gordon
     environment:
       - BOT_NAME=Bot-Gordon
       - WORKSPACE_ID=${WORKSPACE_ID:-default}
@@ -50,7 +50,7 @@ services:
     build:
       context: .
       dockerfile: packages/bot/Dockerfile
-    container_name: taskinfa-bot-smith
+    container_name: taskinfa-kanban-smith
     environment:
       - BOT_NAME=Bot-Smith
       - WORKSPACE_ID=${WORKSPACE_ID:-default}

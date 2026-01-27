@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "taskinfa-bot": "./dist/index.js"
+    "taskinfa-kanban": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

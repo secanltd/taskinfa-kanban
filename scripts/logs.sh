@@ -7,11 +7,11 @@ BOT_NAME=${1:-john}
 FOLLOW=${2:-true}
 
 if [ "$BOT_NAME" = "john" ]; then
-  CONTAINER="taskinfa-bot-john"
+  CONTAINER="taskinfa-kanban-john"
 elif [ "$BOT_NAME" = "gordon" ]; then
-  CONTAINER="taskinfa-bot-gordon"
+  CONTAINER="taskinfa-kanban-gordon"
 elif [ "$BOT_NAME" = "smith" ]; then
-  CONTAINER="taskinfa-bot-smith"
+  CONTAINER="taskinfa-kanban-smith"
 else
   echo "❌ Unknown bot name: $BOT_NAME"
   echo "Available bots: john, gordon, smith"

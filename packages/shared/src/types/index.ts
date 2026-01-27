@@ -86,6 +86,28 @@ export interface TaskComment {
   created_at: string;
 }
 
+export type WorkerStatus = 'idle' | 'working' | 'offline' | 'error';
+
+export interface Worker {
+  id: string;
+  workspace_id: string;
+  name: string;
+  status: WorkerStatus;
+  current_task_id: string | null;
+  last_heartbeat: string | null;
+  total_tasks_completed: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkerWithTask extends Worker {
+  current_task?: {
+    id: string;
+    title: string | null;
+  } | null;
+  last_seen: string;
+}
+
 // API request/response types
 
 export interface ListTasksRequest {

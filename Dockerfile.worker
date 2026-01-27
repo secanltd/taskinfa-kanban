@@ -1,44 +1,70 @@
+# Taskinfa-Kanban Docker Worker
+# Multi-project worker for secure, isolated task execution
+# Workers can work on ANY project based on priority
+
 FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl wget git jq bash tee \
-    build-essential \
-    supervisor \
-    nodejs npm \
+    curl \
+    wget \
+    git \
+    jq \
+    bash \
+    ca-certificates \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.sh/install.sh | bash
+# Install Node.js 20 (LTS)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
 
 # Create directories
-RUN mkdir -p /workspace /app/mcp /var/log/worker /var/log/supervisor
+# /workspace - where projects are cloned (only dir Claude can access)
+# /app/logs - worker execution logs
+RUN mkdir -p /workspace /app/logs
+
+# Set workspace as the working directory
 WORKDIR /workspace
 
-# Copy MCP server (from dashboard build)
-COPY packages/dashboard/dist/lib/mcp/server.js /app/mcp/server.js
-
 # Copy worker script
-COPY scripts/worker/taskinfa-worker-loop.sh /app/worker/taskinfa-worker-loop.sh
-RUN chmod +x /app/worker/taskinfa-worker-loop.sh
+COPY scripts/worker/docker-worker.sh /app/worker.sh
+RUN chmod +x /app/worker.sh
 
-# Copy skill
-COPY .claude/skills/taskinfa-kanban /workspace/.claude/skills/taskinfa-kanban
-
-# Create worker user
+# Create non-root worker user for security
 RUN useradd -m -s /bin/bash worker && \
-    chown -R worker:worker /workspace /app /var/log/worker
+    chown -R worker:worker /workspace /app
 
-# Supervisord config
-COPY config/supervisord-worker.conf /etc/supervisor/conf.d/supervisord.conf
-
+# Switch to non-root user
 USER worker
 
-ENV WORKSPACE_ID=default
-ENV TASK_LIST_ID=default
+# Environment variables (to be overridden at runtime)
+# Worker identification
 ENV WORKER_NAME=Worker-1
-ENV POLL_INTERVAL=30
-ENV MCP_SERVER_CMD=node
-ENV MCP_SERVER_ARGS=/app/mcp/server.js
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Taskinfa API configuration
+ENV TASKINFA_API_KEY=""
+ENV TASKINFA_API_URL="https://taskinfa-kanban.secan-ltd.workers.dev/api"
+
+# Polling configuration
+ENV POLL_INTERVAL=30
+
+# Git/GitHub configuration (for cloning private repos)
+ENV GITHUB_TOKEN=""
+
+# Claude API key (required for claude CLI)
+ENV ANTHROPIC_API_KEY=""
+
+# Health check - verify worker script is running
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "docker-worker.sh" || exit 1
+
+# Run worker script
+CMD ["/app/worker.sh"]

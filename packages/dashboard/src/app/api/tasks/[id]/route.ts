@@ -69,23 +69,24 @@ export async function PATCH(
     const { id } = await params;
 
     const body: UpdateTaskStatusRequest = await request.json();
-    const { status, completion_notes, files_changed, error_count, loop_count } = body;
+    const { status, completion_notes, files_changed, error_count, loop_count, assigned_to } = body;
 
-    // Validate status
-    const validatedStatus = validateEnum(status,
+    // Validate status if provided
+    const validatedStatus = status ? validateEnum(status,
       ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
-      { fieldName: 'status', required: true }
-    );
-
-    if (!validatedStatus) {
-      throw validationError('Status is required');
-    }
+      { fieldName: 'status', required: false }
+    ) : undefined;
 
     const db = getDb();
 
     // Build dynamic UPDATE query
-    const updates: string[] = ['status = ?', 'updated_at = datetime("now")'];
-    const updateParams: (string | number)[] = [validatedStatus];
+    const updates: string[] = ['updated_at = datetime("now")'];
+    const updateParams: (string | number | null)[] = [];
+
+    if (validatedStatus) {
+      updates.push('status = ?');
+      updateParams.push(validatedStatus);
+    }
 
     // Handle status-specific timestamps
     if (validatedStatus === 'in_progress') {
@@ -122,6 +123,11 @@ export async function PATCH(
       });
       updates.push('loop_count = ?');
       updateParams.push(validatedLoopCount);
+    }
+
+    if (assigned_to !== undefined) {
+      updates.push('assigned_to = ?');
+      updateParams.push(assigned_to || null);
     }
 
     updateParams.push(id, auth.workspaceId);
