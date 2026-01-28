@@ -21,6 +21,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install platform-specific native bindings
+        run: npm install @ast-grep/napi-linux-x64-gnu@0.40.0
+
       - name: Determine environment
         id: env
         run: |
