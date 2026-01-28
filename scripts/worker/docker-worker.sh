@@ -312,7 +312,7 @@ main() {
     echo "   API: ${TASKINFA_API_URL}"
     echo "   Workspace: ${WORKSPACE_DIR}"
     echo "   Poll Interval: ${POLL_INTERVAL}s"
-    echo "   GitHub: ${GITHUB_TOKEN:+configured}${GITHUB_TOKEN:-NOT configured}"
+    echo "   GitHub: $([ -n "$GITHUB_TOKEN" ] && echo "configured" || echo "NOT configured")"
     echo "========================================"
     echo ""
 
