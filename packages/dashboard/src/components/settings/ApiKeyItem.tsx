@@ -110,15 +110,15 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
 
   return (
     <>
-      <tr className={isDeleting ? 'opacity-50' : ''}>
-        <td className="px-6 py-4 whitespace-nowrap">
+      <tr className={`${isDeleting ? 'opacity-50' : ''} hover:bg-terminal-surface-hover transition-colors`}>
+        <td className="px-4 py-4 whitespace-nowrap">
           {isEditing ? (
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={editedName}
                 onChange={(e) => setEditedName(e.target.value)}
-                className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input-field text-sm"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleRename();
@@ -131,7 +131,7 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
               <button
                 onClick={handleRename}
                 disabled={isSaving}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="text-xs text-terminal-green hover:text-green-400 font-medium transition-colors"
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
@@ -141,33 +141,33 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
                   setEditedName(apiKey.name);
                   setError(null);
                 }}
-                className="text-xs text-gray-600 hover:text-gray-700"
+                className="text-xs text-terminal-muted hover:text-terminal-text transition-colors"
               >
                 Cancel
               </button>
             </div>
           ) : (
-            <div className="text-sm font-medium text-gray-900">{apiKey.name}</div>
+            <div className="text-sm font-medium text-terminal-text">{apiKey.name}</div>
           )}
-          {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+          {error && <p className="text-xs text-terminal-red mt-1">{error}</p>}
         </td>
-        <td className="px-6 py-4 whitespace-nowrap">
-          <code className="text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
+        <td className="px-4 py-4 whitespace-nowrap">
+          <code className="text-sm text-terminal-muted bg-terminal-bg px-2 py-1 rounded font-mono">
             {apiKey.key_preview}
           </code>
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+        <td className="px-4 py-4 whitespace-nowrap text-sm text-terminal-muted">
           {formatDate(apiKey.last_used_at)}
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+        <td className="px-4 py-4 whitespace-nowrap text-sm text-terminal-muted">
           {formatDate(apiKey.created_at)}
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
           <div className="flex justify-end gap-3">
             {!isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="text-blue-600 hover:text-blue-700"
+                className="text-terminal-blue hover:text-blue-400 transition-colors"
               >
                 Rename
               </button>
@@ -175,7 +175,7 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
-              className="text-red-600 hover:text-red-700 disabled:opacity-50"
+              className="text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50"
             >
               {isDeleting ? 'Revoking...' : 'Revoke'}
             </button>
@@ -186,12 +186,12 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
       {/* Delete Confirmation Dialog */}
       {showDeleteConfirm && (
         <tr>
-          <td colSpan={5} className="px-6 py-4">
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
-              <p className="text-sm text-red-800 font-medium mb-2">
-                Revoke API key "{apiKey.name}"?
+          <td colSpan={5} className="px-4 py-4">
+            <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-4">
+              <p className="text-sm text-terminal-red font-medium mb-2">
+                Revoke API key &quot;{apiKey.name}&quot;?
               </p>
-              <p className="text-sm text-red-700 mb-4">
+              <p className="text-sm text-terminal-muted mb-4">
                 This action cannot be undone. The key will stop working immediately and any bots
                 using it will lose access.
               </p>
@@ -199,14 +199,14 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
                 <button
                   onClick={handleDelete}
                   disabled={isDeleting}
-                  className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50"
+                  className="btn-danger"
                 >
                   {isDeleting ? 'Revoking...' : 'Yes, revoke key'}
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
                   disabled={isDeleting}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>

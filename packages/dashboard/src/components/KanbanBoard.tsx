@@ -3,19 +3,22 @@
 import { useState, useCallback } from 'react';
 import type { Task, TaskList, TaskStatus } from '@taskinfa/shared';
 import { useTaskStream, WorkerStatus } from '@/hooks/useTaskStream';
-import WorkerStatusPanel from './WorkerStatusPanel';
+import TaskCard from './TaskCard';
+import TaskModal from './TaskModal';
+import WorkersModal from './WorkersModal';
+import CreateTaskModal from './CreateTaskModal';
 
 interface KanbanBoardProps {
   initialTasks: Task[];
   taskLists: TaskList[];
 }
 
-const statusColumns: { status: TaskStatus; label: string; color: string }[] = [
-  { status: 'backlog', label: 'Backlog', color: 'bg-gray-100' },
-  { status: 'todo', label: 'To Do', color: 'bg-blue-100' },
-  { status: 'in_progress', label: 'In Progress', color: 'bg-yellow-100' },
-  { status: 'review', label: 'Review', color: 'bg-purple-100' },
-  { status: 'done', label: 'Done', color: 'bg-green-100' },
+const statusColumns: { status: TaskStatus; label: string; icon: string }[] = [
+  { status: 'backlog', label: 'Backlog', icon: '📋' },
+  { status: 'todo', label: 'To Do', icon: '📝' },
+  { status: 'in_progress', label: 'In Progress', icon: '⚡' },
+  { status: 'review', label: 'Review', icon: '👀' },
+  { status: 'done', label: 'Done', icon: '✅' },
 ];
 
 export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProps) {
@@ -23,11 +26,13 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isWorkersModalOpen, setIsWorkersModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   // Handle real-time task updates from SSE
   const handleTasksUpdated = useCallback((updatedTasks: Task[]) => {
     setTasks((prevTasks) => {
-      // Merge updated tasks with existing tasks
       const taskMap = new Map(prevTasks.map(t => [t.id, t]));
       updatedTasks.forEach(task => {
         taskMap.set(task.id, task);
@@ -49,19 +54,6 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
 
   const getTasksByStatus = (status: TaskStatus) => {
     return tasks.filter((task) => task.status === status).sort((a, b) => a.order - b.order);
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'border-red-500';
-      case 'high':
-        return 'border-orange-500';
-      case 'medium':
-        return 'border-blue-500';
-      default:
-        return 'border-gray-300';
-    }
   };
 
   const handleDragStart = (task: Task) => {
@@ -86,32 +78,28 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
       return;
     }
 
+    // Optimistic update
+    const previousTasks = [...tasks];
+    setTasks((prev) =>
+      prev.map((t) => (t.id === draggedTask.id ? { ...t, status: newStatus } : t))
+    );
+
     try {
-      // Update task status via API
       const response = await fetch(`/api/tasks/${draggedTask.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: newStatus,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update task');
-      }
+      if (!response.ok) throw new Error('Failed to update task');
 
       const data = await response.json() as { task: Task };
-      const updatedTask = data.task;
-
-      // Update local state
-      setTasks((prevTasks) =>
-        prevTasks.map((t) => (t.id === draggedTask.id ? updatedTask : t))
+      setTasks((prev) =>
+        prev.map((t) => (t.id === draggedTask.id ? data.task : t))
       );
     } catch (error) {
       console.error('Error updating task:', error);
-      alert('Failed to move task. Please try again.');
+      setTasks(previousTasks);
     }
 
     setDraggedTask(null);
@@ -119,150 +107,145 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
 
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task);
+    setEditingTask(null);
+  };
+
+  const handleTaskEdit = (task: Task) => {
+    setSelectedTask(task);
+    setEditingTask(task);
+  };
+
+  const handleTaskUpdate = (updatedTask: Task) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+    );
+    setSelectedTask(updatedTask);
+  };
+
+  const handleTaskDelete = (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setSelectedTask(null);
+  };
+
+  const handleTaskCreated = (newTask: Task) => {
+    setTasks((prev) => [...prev, newTask]);
   };
 
   const closeModal = () => {
     setSelectedTask(null);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    setEditingTask(null);
   };
 
   return (
     <>
-      {/* Connection status indicator */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-            }`}
-          />
-          <span className="text-sm text-gray-600">
-            {connected ? 'Live updates' : 'Disconnected'}
-          </span>
-          {!connected && (
-            <button
-              onClick={reconnect}
-              className="text-sm text-blue-600 hover:text-blue-800 underline ml-2"
-            >
-              Reconnect
-            </button>
-          )}
+      {/* Header Bar */}
+      <div className="flex items-center justify-between mb-6">
+        {/* Left: Connection Status */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                connected ? 'bg-terminal-green animate-pulse' : 'bg-terminal-red'
+              }`}
+            />
+            <span className="text-sm text-terminal-muted">
+              {connected ? 'Live updates' : 'Disconnected'}
+            </span>
+            {!connected && (
+              <button
+                onClick={reconnect}
+                className="text-sm text-terminal-blue hover:text-terminal-text underline"
+              >
+                Reconnect
+              </button>
+            )}
+          </div>
         </div>
-        <div className="text-sm text-gray-500">
-          {onlineCount} worker{onlineCount !== 1 ? 's' : ''} online
-          {workingCount > 0 && ` (${workingCount} working)`}
+
+        {/* Right: Workers + Create */}
+        <div className="flex items-center gap-3">
+          {/* Workers Indicator */}
+          <button
+            onClick={() => setIsWorkersModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
+                       hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors"
+          >
+            <span className={`w-2 h-2 rounded-full ${onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
+            <span className="text-sm text-terminal-text">
+              {onlineCount} worker{onlineCount !== 1 ? 's' : ''} online
+            </span>
+            {workingCount > 0 && (
+              <span className="text-sm text-terminal-muted">
+                ({workingCount} working)
+              </span>
+            )}
+          </button>
+
+          {/* Create Task Button */}
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>New Task</span>
+          </button>
         </div>
       </div>
 
-      <div className="flex gap-4">
-        {/* Main kanban board */}
-        <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
+      {/* Kanban Board - Full Width with Horizontal Scroll */}
+      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
         {statusColumns.map((column) => {
           const columnTasks = getTasksByStatus(column.status);
           const isDragOver = dragOverColumn === column.status;
 
           return (
-            <div key={column.status} className="flex-shrink-0 w-80">
-              <div className={`${column.color} rounded-t-lg p-3 border-b-2 border-gray-300`}>
-                <h2 className="font-semibold text-gray-700">
-                  {column.label}
-                  <span className="ml-2 text-sm text-gray-500">({columnTasks.length})</span>
-                </h2>
+            <div key={column.status} className="flex-shrink-0 w-72">
+              {/* Column Header */}
+              <div className="sticky top-0 z-10 bg-terminal-surface rounded-t-lg px-4 py-3 border border-terminal-border border-b-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>{column.icon}</span>
+                    <h2 className="font-semibold text-terminal-text">{column.label}</h2>
+                  </div>
+                  <span className="text-sm text-terminal-muted bg-terminal-bg px-2 py-0.5 rounded">
+                    {columnTasks.length}
+                  </span>
+                </div>
               </div>
 
+              {/* Column Content */}
               <div
-                className={`bg-gray-50 rounded-b-lg p-3 min-h-[500px] space-y-3 transition-colors ${
-                  isDragOver ? 'bg-blue-50 ring-2 ring-blue-400' : ''
-                }`}
+                className={`
+                  bg-terminal-bg rounded-b-lg border border-terminal-border border-t-0
+                  min-h-[calc(100vh-320px)] p-3 space-y-3 transition-all duration-150
+                  ${isDragOver ? 'ring-2 ring-terminal-blue ring-inset bg-terminal-blue/5' : ''}
+                `}
                 onDragOver={(e) => handleDragOver(e, column.status)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, column.status)}
               >
                 {columnTasks.map((task) => (
-                  <div
+                  <TaskCard
                     key={task.id}
-                    draggable
+                    task={task}
+                    worker={getWorkerForTask(task.id)}
+                    isDragging={draggedTask?.id === task.id}
                     onDragStart={() => handleDragStart(task)}
                     onClick={() => handleTaskClick(task)}
-                    className={`bg-white rounded-lg p-4 shadow-sm border-l-4 ${getPriorityColor(
-                      task.priority
-                    )} hover:shadow-md transition-all cursor-move ${
-                      draggedTask?.id === task.id ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <h3 className="font-medium text-gray-900 mb-2">{task.title}</h3>
-
-                    {task.description && (
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{task.description}</p>
-                    )}
-
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span className="font-medium uppercase">{task.priority}</span>
-                      {task.loop_count > 0 && (
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          {task.loop_count} loops
-                        </span>
-                      )}
-                    </div>
-
-                    {task.labels && task.labels.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {task.labels.map((label, idx) => (
-                          <span
-                            key={idx}
-                            className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
-                          >
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {task.files_changed && task.files_changed.length > 0 && (
-                      <div className="mt-2 text-xs text-gray-500">
-                        📁 {task.files_changed.length} files changed
-                      </div>
-                    )}
-
-                    {task.completion_notes && (
-                      <div className="mt-2 text-xs text-gray-600 italic border-t pt-2">
-                        {task.completion_notes}
-                      </div>
-                    )}
-
-                    {/* Worker indicator for in-progress tasks */}
-                    {(() => {
-                      const worker = getWorkerForTask(task.id);
-                      if (worker) {
-                        return (
-                          <div className="mt-2 pt-2 border-t flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-xs text-blue-700 font-medium">
-                              {worker.name} is working on this
-                            </span>
-                          </div>
-                        );
-                      }
-                      if (task.assigned_to && task.status === 'in_progress') {
-                        return (
-                          <div className="mt-2 pt-2 border-t flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                            <span className="text-xs text-yellow-700">
-                              Assigned to {task.assigned_to}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
+                    onEdit={() => handleTaskEdit(task)}
+                  />
                 ))}
 
                 {columnTasks.length === 0 && (
-                  <div className="text-center text-gray-400 text-sm py-8">
+                  <div className={`
+                    text-center py-12 rounded-lg border-2 border-dashed transition-colors
+                    ${isDragOver
+                      ? 'border-terminal-blue text-terminal-blue'
+                      : 'border-terminal-border text-terminal-muted'
+                    }
+                  `}>
                     {isDragOver ? 'Drop here' : 'No tasks'}
                   </div>
                 )}
@@ -270,183 +253,38 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
             </div>
           );
         })}
-        </div>
-
-        {/* Worker Status Sidebar */}
-        <div className="w-72 flex-shrink-0">
-          <WorkerStatusPanel
-            workers={workers}
-            connected={connected}
-            onlineCount={onlineCount}
-            workingCount={workingCount}
-            onReconnect={reconnect}
-          />
-        </div>
       </div>
 
-      {/* Task Details Modal */}
+      {/* Task Modal */}
       {selectedTask && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={closeModal}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">Task Details</h2>
-              <button
-                onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 space-y-6">
-              {/* Title */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                <p className="text-lg font-medium text-gray-900">{selectedTask.title}</p>
-              </div>
-
-              {/* Description */}
-              {selectedTask.description && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <p className="text-gray-700 whitespace-pre-wrap">{selectedTask.description}</p>
-                </div>
-              )}
-
-              {/* Status and Priority */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                    {statusColumns.find((c) => c.status === selectedTask.status)?.label}
-                  </span>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      selectedTask.priority === 'urgent'
-                        ? 'bg-red-100 text-red-800'
-                        : selectedTask.priority === 'high'
-                        ? 'bg-orange-100 text-orange-800'
-                        : selectedTask.priority === 'medium'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {selectedTask.priority.toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Labels */}
-              {selectedTask.labels && selectedTask.labels.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Labels</label>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedTask.labels.map((label, idx) => (
-                      <span
-                        key={idx}
-                        className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
-                      >
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Execution Info */}
-              {(selectedTask.loop_count > 0 || selectedTask.assigned_to) && (
-                <div className="grid grid-cols-2 gap-4">
-                  {selectedTask.assigned_to && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Assigned To
-                      </label>
-                      <p className="text-gray-900">{selectedTask.assigned_to}</p>
-                    </div>
-                  )}
-                  {selectedTask.loop_count > 0 && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Loop Count
-                      </label>
-                      <p className="text-gray-900">{selectedTask.loop_count}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Files Changed */}
-              {selectedTask.files_changed && selectedTask.files_changed.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Files Changed
-                  </label>
-                  <div className="bg-gray-50 rounded p-3 space-y-1">
-                    {selectedTask.files_changed.map((file, idx) => (
-                      <div key={idx} className="text-sm text-gray-700 font-mono">
-                        📄 {file}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Completion Notes */}
-              {selectedTask.completion_notes && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Completion Notes
-                  </label>
-                  <div className="bg-green-50 border border-green-200 rounded p-3">
-                    <p className="text-gray-700 whitespace-pre-wrap">
-                      {selectedTask.completion_notes}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Timestamps */}
-              <div className="border-t pt-4 space-y-2 text-sm text-gray-600">
-                <div className="flex justify-between">
-                  <span className="font-medium">Created:</span>
-                  <span>{formatDate(selectedTask.created_at)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Updated:</span>
-                  <span>{formatDate(selectedTask.updated_at)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Task ID:</span>
-                  <span className="font-mono text-xs">{selectedTask.id}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <TaskModal
+          task={selectedTask}
+          isOpen={true}
+          onClose={closeModal}
+          onUpdate={handleTaskUpdate}
+          onDelete={handleTaskDelete}
+          editMode={editingTask !== null}
+        />
       )}
+
+      {/* Workers Modal */}
+      <WorkersModal
+        isOpen={isWorkersModalOpen}
+        onClose={() => setIsWorkersModalOpen(false)}
+        workers={workers}
+        connected={connected}
+        onlineCount={onlineCount}
+        workingCount={workingCount}
+        onReconnect={reconnect}
+      />
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={handleTaskCreated}
+        taskLists={taskLists}
+      />
     </>
   );
 }

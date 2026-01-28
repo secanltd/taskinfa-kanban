@@ -44,44 +44,48 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-            <p className="text-gray-600 text-sm mt-1">
-              Manage your account and API keys
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="/dashboard"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Dashboard
-            </a>
+    <div className="min-h-screen bg-terminal-bg">
+      {/* Header */}
+      <header className="bg-terminal-surface border-b border-terminal-border">
+        <div className="max-w-[1400px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <a href="/dashboard" className="flex items-center gap-2 text-terminal-muted hover:text-terminal-text transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span className="text-sm">Dashboard</span>
+              </a>
+              <div className="h-4 w-px bg-terminal-border" />
+              <div>
+                <h1 className="text-xl font-bold text-terminal-text">Settings</h1>
+                <p className="text-terminal-muted text-sm">
+                  Manage your account and API keys
+                </p>
+              </div>
+            </div>
             <LogoutButton />
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="space-y-8">
+      <main className="max-w-[1400px] mx-auto px-6 py-8">
+        <div className="space-y-6">
           {/* Profile Section */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Profile</h2>
-            <div className="space-y-3">
+          <div className="card p-6">
+            <h2 className="text-lg font-semibold text-terminal-text mb-4">Profile</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-gray-700">Name</label>
-                <p className="text-gray-900">{user.name || 'Not set'}</p>
+                <label className="text-sm font-medium text-terminal-muted">Name</label>
+                <p className="text-terminal-text mt-1">{user.name || 'Not set'}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Email</label>
-                <p className="text-gray-900">{user.email}</p>
+                <label className="text-sm font-medium text-terminal-muted">Email</label>
+                <p className="text-terminal-text mt-1">{user.email}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Account created</label>
-                <p className="text-gray-900">
+                <label className="text-sm font-medium text-terminal-muted">Account created</label>
+                <p className="text-terminal-text mt-1">
                   {new Date(user.created_at).toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'long',
@@ -91,8 +95,8 @@ export default async function SettingsPage() {
               </div>
               {user.last_login_at && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Last login</label>
-                  <p className="text-gray-900">
+                  <label className="text-sm font-medium text-terminal-muted">Last login</label>
+                  <p className="text-terminal-text mt-1">
                     {new Date(user.last_login_at).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
@@ -107,36 +111,40 @@ export default async function SettingsPage() {
           </div>
 
           {/* Workspace Section */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Workspace</h2>
-            <div className="space-y-3">
+          <div className="card p-6">
+            <h2 className="text-lg font-semibold text-terminal-text mb-4">Workspace</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-gray-700">Workspace name</label>
-                <p className="text-gray-900">{workspace.name}</p>
+                <label className="text-sm font-medium text-terminal-muted">Workspace name</label>
+                <p className="text-terminal-text mt-1">{workspace.name}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Workspace ID</label>
-                <p className="text-gray-900 font-mono text-sm">{workspace.id}</p>
+                <label className="text-sm font-medium text-terminal-muted">Workspace ID</label>
+                <p className="text-terminal-text mt-1 font-mono text-sm bg-terminal-bg px-2 py-1 rounded inline-block">
+                  {workspace.id}
+                </p>
               </div>
               {workspace.description && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Description</label>
-                  <p className="text-gray-900">{workspace.description}</p>
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium text-terminal-muted">Description</label>
+                  <p className="text-terminal-text mt-1">{workspace.description}</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* API Keys Section */}
-          <div className="bg-white shadow rounded-lg p-6">
+          <div className="card p-6">
             <ApiKeyList />
           </div>
         </div>
       </main>
 
-      <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          Developed by <span className="font-semibold">SECAN</span> • Open Source MIT License
+      <footer className="bg-terminal-surface border-t border-terminal-border mt-auto">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 text-center">
+          <span className="text-terminal-muted text-sm">
+            Developed by <span className="font-semibold text-terminal-text">SECAN</span> • Open Source MIT License
+          </span>
         </div>
       </footer>
     </div>

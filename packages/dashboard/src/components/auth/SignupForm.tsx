@@ -37,9 +37,9 @@ export default function SignupForm() {
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
-    if (score <= 2) return { score, label: 'Weak', color: 'bg-red-500' };
-    if (score <= 4) return { score, label: 'Medium', color: 'bg-yellow-500' };
-    return { score, label: 'Strong', color: 'bg-green-500' };
+    if (score <= 2) return { score, label: 'Weak', color: 'bg-terminal-red' };
+    if (score <= 4) return { score, label: 'Medium', color: 'bg-terminal-amber' };
+    return { score, label: 'Strong', color: 'bg-terminal-green' };
   };
 
   const passwordStrength = formData.password ? calculatePasswordStrength(formData.password) : null;
@@ -123,23 +123,23 @@ export default function SignupForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="bg-white shadow-lg rounded-lg px-8 py-10">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+      <div className="card px-8 py-10">
+        <h2 className="text-2xl font-bold text-terminal-text mb-2 text-center">
           Create your account
         </h2>
-        <p className="text-sm text-gray-600 mb-6 text-center">
+        <p className="text-sm text-terminal-muted mb-6 text-center">
           Your workspace will be created automatically
         </p>
 
         {errors.general && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-600">{errors.general}</p>
+          <div className="mb-4 p-3 bg-terminal-red/10 border border-terminal-red/20 rounded-lg">
+            <p className="text-sm text-terminal-red">{errors.general}</p>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="name" className="block text-sm font-medium text-terminal-muted mb-2">
               Name (optional)
             </label>
             <input
@@ -148,13 +148,13 @@ export default function SignupForm() {
               autoComplete="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-field w-full"
               placeholder="Your name"
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-terminal-muted mb-2">
               Email
             </label>
             <input
@@ -163,18 +163,18 @@ export default function SignupForm() {
               autoComplete="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.email ? 'border-red-300' : 'border-gray-300'
+              className={`input-field w-full ${
+                errors.email ? 'border-terminal-red focus:ring-terminal-red' : ''
               }`}
               placeholder="you@example.com"
             />
             {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              <p className="mt-1 text-sm text-terminal-red">{errors.email}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-terminal-muted mb-2">
               Password
             </label>
             <input
@@ -183,29 +183,32 @@ export default function SignupForm() {
               autoComplete="new-password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.password ? 'border-red-300' : 'border-gray-300'
+              className={`input-field w-full ${
+                errors.password ? 'border-terminal-red focus:ring-terminal-red' : ''
               }`}
               placeholder="At least 8 characters"
             />
             {errors.password && (
-              <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              <p className="mt-1 text-sm text-terminal-red">{errors.password}</p>
             )}
 
             {passwordStrength && formData.password && (
-              <div className="mt-2">
+              <div className="mt-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="flex-1 h-1.5 bg-terminal-border rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all ${passwordStrength.color}`}
                       style={{ width: `${(passwordStrength.score / 6) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs font-medium text-gray-600">
+                  <span className={`text-xs font-medium ${
+                    passwordStrength.score <= 2 ? 'text-terminal-red' :
+                    passwordStrength.score <= 4 ? 'text-terminal-amber' : 'text-terminal-green'
+                  }`}>
                     {passwordStrength.label}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-terminal-muted">
                   Use 8+ characters with uppercase, lowercase, and numbers
                 </p>
               </div>
@@ -213,7 +216,7 @@ export default function SignupForm() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-terminal-muted mb-2">
               Confirm Password
             </label>
             <input
@@ -222,31 +225,29 @@ export default function SignupForm() {
               autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
+              className={`input-field w-full ${
+                errors.confirmPassword ? 'border-terminal-red focus:ring-terminal-red' : ''
               }`}
               placeholder="Re-enter your password"
             />
             {errors.confirmPassword && (
-              <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
+              <p className="mt-1 text-sm text-terminal-red">{errors.confirmPassword}</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className={`w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+            className={`btn-primary w-full ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {isLoading ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-terminal-muted">
             Already have an account?{' '}
-            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/auth/login" className="font-medium text-terminal-green hover:text-green-400 transition-colors">
               Log in
             </Link>
           </p>

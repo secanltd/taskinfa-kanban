@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { getDb, query, queryOne } from '@/lib/db/client';
 import { verifySessionToken } from '@/lib/auth/session';
 import KanbanBoard from '@/components/KanbanBoard';
-import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import LogoutButton from '@/components/auth/LogoutButton';
 import type { Task, TaskList, User } from '@taskinfa/shared';
 
@@ -59,53 +58,65 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Taskinfa Dashboard</h1>
-            <p className="text-gray-600 mt-1">
-              Autonomous task automation with Claude Code
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {user.name || user.email}
-            </span>
-            <a
-              href="/projects"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Projects
-            </a>
-            <a
-              href="/settings"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Settings
-            </a>
-            <LogoutButton />
+    <div className="min-h-screen bg-terminal-bg">
+      {/* Header */}
+      <header className="bg-terminal-surface border-b border-terminal-border">
+        <div className="max-w-[1800px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            {/* Left: Logo and Title */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">⚡</span>
+                <h1 className="text-xl font-bold text-terminal-text">Taskinfa</h1>
+              </div>
+              <span className="text-terminal-muted text-sm hidden sm:block">
+                Autonomous task automation with Claude Code
+              </span>
+            </div>
+
+            {/* Right: Navigation */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-terminal-muted hidden md:block">
+                {user.name || user.email}
+              </span>
+              <div className="h-4 w-px bg-terminal-border hidden md:block" />
+              <a
+                href="/projects"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+              >
+                Projects
+              </a>
+              <a
+                href="/settings"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+              >
+                Settings
+              </a>
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <DashboardHeader taskLists={taskLists} />
+      {/* Main Content */}
+      <main className="max-w-[1800px] mx-auto px-6 py-6">
         {taskLists.length === 0 ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">⚠️</span>
+          <div className="bg-terminal-amber/10 border border-terminal-amber/20 rounded-lg p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-terminal-amber/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-xl">⚠️</span>
+              </div>
               <div>
-                <h3 className="font-semibold text-yellow-900 mb-2">
+                <h3 className="font-semibold text-terminal-text mb-2">
                   No Projects Found
                 </h3>
-                <p className="text-yellow-800 mb-3">
+                <p className="text-terminal-muted mb-4">
                   You need to create at least one project before you can create tasks.
                   Projects organize your tasks and are used by worker containers to know which tasks to execute.
                 </p>
                 <a
                   href="/projects"
-                  className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                  className="btn-primary inline-block"
                 >
                   Create Your First Project
                 </a>
@@ -117,9 +128,12 @@ export default async function DashboardPage() {
         )}
       </main>
 
-      <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          Developed by <span className="font-semibold">SECAN</span> • Open Source MIT License
+      {/* Footer */}
+      <footer className="bg-terminal-surface border-t border-terminal-border mt-auto">
+        <div className="max-w-[1800px] mx-auto px-6 py-4 text-center">
+          <span className="text-terminal-muted text-sm">
+            Developed by <span className="font-semibold text-terminal-text">SECAN</span> • Open Source MIT License
+          </span>
         </div>
       </footer>
     </div>

@@ -60,54 +60,62 @@ export default async function ProjectsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
-            <p className="text-gray-600 mt-1">
-              Manage your task lists and worker projects
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {user.name || user.email}
-            </span>
-            <Link
-              href="/dashboard"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/settings"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Settings
-            </Link>
-            <LogoutButton />
+    <div className="min-h-screen bg-terminal-bg">
+      {/* Header */}
+      <header className="bg-terminal-surface border-b border-terminal-border">
+        <div className="max-w-[1400px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard" className="flex items-center gap-2 text-terminal-muted hover:text-terminal-text transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span className="text-sm">Dashboard</span>
+              </Link>
+              <div className="h-4 w-px bg-terminal-border" />
+              <div>
+                <h1 className="text-xl font-bold text-terminal-text">Projects</h1>
+                <p className="text-terminal-muted text-sm">
+                  Manage your task lists and worker projects
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-terminal-muted hidden md:block">
+                {user.name || user.email}
+              </span>
+              <div className="h-4 w-px bg-terminal-border hidden md:block" />
+              <Link
+                href="/settings"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+              >
+                Settings
+              </Link>
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+      <main className="max-w-[1400px] mx-auto px-6 py-8">
+        <div className="card p-6">
+          {/* Info Section */}
+          <div className="mb-6 p-4 bg-terminal-bg rounded-lg border border-terminal-border">
+            <h2 className="text-lg font-semibold text-terminal-text mb-3">
               What are Projects?
             </h2>
-            <div className="text-gray-600 text-sm space-y-2">
+            <div className="text-terminal-muted text-sm space-y-2">
               <p>
-                <strong>Projects (Task Lists)</strong> are containers for related tasks.
+                <span className="text-terminal-text font-medium">Projects (Task Lists)</span> are containers for related tasks.
                 Each project represents a separate codebase or area of work.
               </p>
               <p>
-                When you create a project, you can optionally provide a <strong>Git repository URL</strong>.
+                When you create a project, you can optionally provide a <span className="text-terminal-text font-medium">Git repository URL</span>.
                 Workers will automatically clone this repository when they start working on tasks from this project.
               </p>
               <p>
-                The <strong>Project ID</strong> is used by worker containers to know which tasks to execute.
-                You'll need this ID when setting up workers.
+                The <span className="text-terminal-text font-medium">Project ID</span> is used by worker containers to know which tasks to execute.
+                You&apos;ll need this ID when setting up workers.
               </p>
             </div>
           </div>
@@ -116,9 +124,11 @@ export default async function ProjectsPage() {
         </div>
       </main>
 
-      <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          Developed by <span className="font-semibold">SECAN</span> • Open Source MIT License
+      <footer className="bg-terminal-surface border-t border-terminal-border mt-auto">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 text-center">
+          <span className="text-terminal-muted text-sm">
+            Developed by <span className="font-semibold text-terminal-text">SECAN</span> • Open Source MIT License
+          </span>
         </div>
       </footer>
     </div>

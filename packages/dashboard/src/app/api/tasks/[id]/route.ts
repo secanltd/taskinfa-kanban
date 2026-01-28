@@ -55,7 +55,15 @@ export async function GET(
   }
 }
 
-// PATCH /api/tasks/[id] - Update task status
+// Extended update request interface for dashboard editing
+interface UpdateTaskRequest extends UpdateTaskStatusRequest {
+  title?: string;
+  description?: string;
+  priority?: string;
+  labels?: string[];
+}
+
+// PATCH /api/tasks/[id] - Update task
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -68,8 +76,19 @@ export async function PATCH(
 
     const { id } = await params;
 
-    const body: UpdateTaskStatusRequest = await request.json();
-    const { status, completion_notes, files_changed, error_count, loop_count, assigned_to } = body;
+    const body: UpdateTaskRequest = await request.json();
+    const {
+      status,
+      completion_notes,
+      files_changed,
+      error_count,
+      loop_count,
+      assigned_to,
+      title,
+      description,
+      priority,
+      labels,
+    } = body;
 
     // Validate status if provided
     const validatedStatus = status ? validateEnum(status,
@@ -77,11 +96,44 @@ export async function PATCH(
       { fieldName: 'status', required: false }
     ) : undefined;
 
+    // Validate priority if provided
+    const validatedPriority = priority ? validateEnum(priority,
+      ['low', 'medium', 'high', 'urgent'] as const,
+      { fieldName: 'priority', required: false }
+    ) : undefined;
+
     const db = getDb();
 
     // Build dynamic UPDATE query
     const updates: string[] = ['updated_at = datetime("now")'];
     const updateParams: (string | number | null)[] = [];
+
+    // Title update
+    if (title !== undefined) {
+      if (!title.trim()) {
+        throw validationError('Title cannot be empty');
+      }
+      updates.push('title = ?');
+      updateParams.push(title.trim());
+    }
+
+    // Description update
+    if (description !== undefined) {
+      updates.push('description = ?');
+      updateParams.push(description.trim() || null);
+    }
+
+    // Priority update
+    if (validatedPriority) {
+      updates.push('priority = ?');
+      updateParams.push(validatedPriority);
+    }
+
+    // Labels update
+    if (labels !== undefined) {
+      updates.push('labels = ?');
+      updateParams.push(JSON.stringify(labels));
+    }
 
     if (validatedStatus) {
       updates.push('status = ?');
