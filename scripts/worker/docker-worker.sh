@@ -125,11 +125,11 @@ ensure_project() {
 
     if [ -d "$project_dir/.git" ]; then
         log_info "Project ${project_id} already cloned, fetching latest..." >&2
-        cd "$project_dir"
-        git fetch origin >&2 || log_warn "Could not fetch from remote" >&2
-        # Reset to main/master to get clean state
-        git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-        git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || true
+        cd "$project_dir" || return 1
+        git fetch origin >&2 2>&1 || log_warn "Could not fetch from remote" >&2
+        # Reset to main/master to get clean state (redirect all output to stderr)
+        { git checkout main || git checkout master || true; } >&2 2>&1
+        { git reset --hard origin/main || git reset --hard origin/master || true; } >&2 2>&1
     elif [ -n "$repo_url" ]; then
         log_info "Cloning project ${project_id} from ${repo_url}..." >&2
 
