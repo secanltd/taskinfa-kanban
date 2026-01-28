@@ -1,6 +1,6 @@
-# Contributing to Taskinfa-Bot
+# Contributing to Taskinfa Kanban
 
-Thank you for your interest in contributing to Taskinfa-Bot! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Taskinfa Kanban.
 
 ## Code of Conduct
 
@@ -9,13 +9,18 @@ Be respectful, collaborative, and constructive in all interactions.
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/yourusername/taskinfa-kanban.git`
-3. Create a branch: `git checkout -b feature/your-feature-name`
-4. Make your changes
-5. Test your changes
-6. Commit: `git commit -m 'Add some feature'`
-7. Push: `git push origin feature/your-feature-name`
-8. Open a Pull Request
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/taskinfa-kanban.git
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Create a branch:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
 ## Development Setup
 
@@ -30,7 +35,21 @@ npm run build
 npm run dashboard:dev
 
 # Run bot (in another terminal)
-npm run bot:run
+cd packages/bot && npm run dev
+```
+
+See [docs/SETUP.md](docs/SETUP.md) for complete setup instructions.
+
+## Project Structure
+
+```
+taskinfa-kanban/
+├── packages/
+│   ├── dashboard/      # Next.js app + API + MCP server
+│   ├── bot/            # Autonomous task executor
+│   └── shared/         # Shared TypeScript types
+├── scripts/            # Helper scripts
+└── docs/               # Documentation
 ```
 
 ## Code Style
@@ -41,27 +60,68 @@ npm run bot:run
 - Add comments for complex logic
 - Keep functions small and focused
 
+### TypeScript Guidelines
+
+- Use explicit types, avoid `any`
+- Export types from the shared package
+- Use async/await over raw Promises
+- Handle errors with try/catch blocks
+
+### React Components
+
+- Use functional components with hooks
+- Keep components small and focused
+- Extract reusable logic into custom hooks
+- Use TypeScript interfaces for props
+
 ## Testing
 
 ```bash
-# Run tests
+# Run tests (when implemented)
 npm test
 
-# Run tests in watch mode
-npm test -- --watch
+# Run linter
+npm run lint
 ```
 
 ## Pull Request Guidelines
 
-1. **Title**: Use clear, descriptive titles
+1. **Title**: Use clear, descriptive titles following conventional commits:
+   - `feat: Add task filtering by priority`
+   - `fix: Resolve login authentication issue`
+   - `docs: Update API reference`
+
 2. **Description**: Explain what changes you made and why
+
 3. **Tests**: Include tests for new features
-4. **Documentation**: Update README if needed
+
+4. **Documentation**: Update docs if needed
+
 5. **Breaking Changes**: Clearly mark any breaking changes
+
+## Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Test additions or changes
+- `chore:` - Build/tooling changes
+
+Example:
+```
+feat: Add task filtering by priority
+
+- Implement priority filter in API endpoint
+- Add UI dropdown for priority selection
+- Update tests for new filtering logic
+```
 
 ## Reporting Bugs
 
-Use [GitHub Issues](https://github.com/secanltd/taskinfa-kanban/issues) to report bugs.
+Use [GitHub Issues](https://github.com/YOUR_USERNAME/taskinfa-kanban/issues) to report bugs.
 
 Include:
 - Clear description of the issue
@@ -72,15 +132,28 @@ Include:
 
 ## Feature Requests
 
-We welcome feature requests! Open an issue with:
+Open an issue with:
 - Clear description of the feature
 - Use case and motivation
 - Proposed implementation (optional)
 
-## Questions?
+## Documentation
 
-Feel free to open a discussion or reach out to the maintainers.
+When adding features:
+- Update relevant docs in `docs/`
+- Update README.md if needed
+- Add JSDoc comments for exported functions
+
+## Security
+
+- Never commit API keys or secrets
+- Use environment variables for sensitive data
+- Report security vulnerabilities privately
 
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
+
+## Questions?
+
+Feel free to open a discussion or reach out to the maintainers.
