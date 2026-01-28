@@ -67,7 +67,8 @@ export default async function DashboardPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">⚡</span>
-                <h1 className="text-xl font-bold text-terminal-text">Taskinfa</h1>
+                <h1 className="text-xl font-bold text-terminal-text">Kanban</h1>
+                <span className="text-sm text-terminal-muted">by Taskinfa</span>
               </div>
               <span className="text-terminal-muted text-sm hidden sm:block">
                 Autonomous task automation with Claude Code

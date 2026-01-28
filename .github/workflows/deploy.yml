@@ -10,6 +10,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      TURBO_DANGEROUSLY_DISABLE_PACKAGE_MANAGER_CHECK: 1
 
     steps:
       - uses: actions/checkout@v4
