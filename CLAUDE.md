@@ -198,7 +198,8 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 - `@opennextjs/cloudflare` ✅ (official OpenNext adapter for Workers)
 - `npm run deploy:prod` ✅ (our deployment script)
 
-**Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev
+**Test URL:** https://taskinfa-kanban-test.secan-ltd.workers.dev
+**Production URL:** https://taskinfa-kanban-prod.secan-ltd.workers.dev
 
 ### Why @opennextjs/cloudflare?
 
@@ -221,30 +222,31 @@ Next.js App → @opennextjs/cloudflare build → Cloudflare Workers
 - **Static Assets:** `.open-next/assets/` (served via ASSETS binding)
 - **Database:** D1 (bound as "DB")
 
-### Quick Deploy Command
+### CI/CD Pipeline (GitHub Actions)
+
+Deployments are triggered by git tags:
 
 ```bash
-cd packages/dashboard
-npm run deploy:prod
+# Deploy to test
+git tag deploy/test/1.0.1 && git push origin deploy/test/1.0.1
+
+# Deploy to production
+git tag deploy/prod/1.0.1 && git push origin deploy/prod/1.0.1
 ```
 
-This script does:
-1. Build Next.js app
-2. Generate OpenNext bundle
-3. Deploy to Cloudflare Workers
+CI runs lint + build on every PR to `main` (`.github/workflows/ci.yml`).
+Deploy workflow (`.github/workflows/deploy.yml`) triggers on `deploy/test/*` and `deploy/prod/*` tags.
 
-### Manual Deployment Steps
-
-If you need to deploy manually:
+### Quick Deploy Commands (local)
 
 ```bash
 cd packages/dashboard
 
-# Step 1: Build and generate OpenNext bundle
-npx opennextjs-cloudflare build
+# Deploy to test environment
+npm run deploy:test
 
-# Step 2: Deploy to Workers
-npx opennextjs-cloudflare deploy
+# Deploy to production environment
+npm run deploy:prod
 ```
 
 ### Configuration Files
@@ -252,21 +254,38 @@ npx opennextjs-cloudflare deploy
 #### 1. wrangler.toml
 
 ```toml
+# Base config (local dev)
 name = "taskinfa-kanban"
 main = ".open-next/worker.js"
 compatibility_date = "2026-01-16"
 compatibility_flags = ["nodejs_compat"]
 
-# ASSETS binding for static files (CSS, JS, images)
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
 
-# D1 Database binding
 [[d1_databases]]
 binding = "DB"
 database_name = "taskinfa-kanban-db"
 database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
+
+# ─── Test Environment ───
+[env.test]
+name = "taskinfa-kanban-test"
+
+[[env.test.d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-test-db"
+database_id = "9cb1ec07-b3ad-43a6-9795-644041818682"
+
+# ─── Production Environment ───
+[env.production]
+name = "taskinfa-kanban-prod"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-prod-db"
+database_id = "5ee95f43-c3a7-4d44-9d7f-12cb878b49c9"
 ```
 
 **Critical Requirements:**
@@ -319,40 +338,54 @@ export default config;
     "build": "next build",
     "build:worker": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy:prod": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local --file=./migrations/003_add_users.sql",
-    "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-db --remote --file=./migrations/003_add_users.sql"
+    "deploy:test": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env test",
+    "deploy:prod": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env production",
+    "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local",
+    "db:migrate:test": "wrangler d1 execute taskinfa-kanban-test-db --remote",
+    "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-prod-db --remote"
   }
 }
 ```
 
+Usage: `npm run db:migrate:test -- --file=./migrations/006_xxx.sql`
+
 ### Environment Variables
 
-Set in Cloudflare Workers dashboard:
+Set secrets per environment using wrangler CLI:
 
-1. Go to: **Workers & Pages** → **taskinfa-kanban** → **Settings** → **Variables**
-2. Add these secrets:
-   - `JWT_SECRET` (required) - 256-bit secret key
-   - `SESSION_SECRET` (optional, falls back to JWT_SECRET)
-   - `BCRYPT_ROUNDS` (optional, default: 12)
-   - `SESSION_MAX_AGE` (optional, default: 604800)
+```bash
+# Test
+wrangler secret put JWT_SECRET --env test
+wrangler secret put SESSION_SECRET --env test
+
+# Production
+wrangler secret put JWT_SECRET --env production
+wrangler secret put SESSION_SECRET --env production
+```
+
+Required secrets:
+- `JWT_SECRET` (required) - 256-bit secret key
+- `SESSION_SECRET` (optional, falls back to JWT_SECRET)
+
+GitHub repository secrets (for CI/CD):
+- `CLOUDFLARE_API_TOKEN` - API token with "Edit Cloudflare Workers" permissions
+- `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID
 
 ### Database Migrations
 
 **Local Database:**
 ```bash
-npm run db:migrate
-# or
-npx wrangler d1 execute taskinfa-kanban-db --local \
-  --file=./migrations/003_add_users.sql
+npm run db:migrate -- --file=./migrations/006_xxx.sql
+```
+
+**Test Database:**
+```bash
+npm run db:migrate:test -- --file=./migrations/006_xxx.sql
 ```
 
 **Production Database:**
 ```bash
-npm run db:migrate:prod
-# or
-npx wrangler d1 execute taskinfa-kanban-db --remote \
-  --file=./migrations/003_add_users.sql
+npm run db:migrate:prod -- --file=./migrations/006_xxx.sql
 ```
 
 ### Deployment Checklist
@@ -365,14 +398,15 @@ npx wrangler d1 execute taskinfa-kanban-db --remote \
 - [ ] Environment variables set in Workers dashboard
 - [ ] Database migrations applied (if needed)
 
-**Deploy:**
+**Deploy (via tag):**
 ```bash
-cd packages/dashboard
-npm run deploy:prod
+git tag deploy/test/1.0.0 && git push origin deploy/test/1.0.0   # test
+git tag deploy/prod/1.0.0 && git push origin deploy/prod/1.0.0   # production
 ```
 
 **Verify:**
-- [ ] Visit https://taskinfa-kanban.secan-ltd.workers.dev
+- [ ] Visit https://taskinfa-kanban-test.secan-ltd.workers.dev (test)
+- [ ] Visit https://taskinfa-kanban-prod.secan-ltd.workers.dev (prod)
 - [ ] Check bindings in dashboard: `env.DB` (D1) + `env.ASSETS`
 - [ ] Test signup/login functionality
 - [ ] Check browser console for errors
@@ -527,7 +561,8 @@ If you previously used `@cloudflare/next-on-pages`:
 
 ---
 
-**Last Updated:** January 27, 2026
+**Last Updated:** January 28, 2026
 **Project:** Taskinfa-Bot
 **Repository:** https://github.com/secanltd/taskinfa-kanban
-**Production URL:** https://taskinfa-kanban.secan-ltd.workers.dev
+**Test URL:** https://taskinfa-kanban-test.secan-ltd.workers.dev
+**Production URL:** https://taskinfa-kanban-prod.secan-ltd.workers.dev
