@@ -361,7 +361,7 @@ Working directory: ${project_dir}"
 
     # Show the command we're about to run
     log_info "Running Claude Code..."
-    log_debug "Command: claude -p \"<prompt>\" --dangerously-skip-permissions"
+    log_debug "Command: claude -p \"<prompt>\" --dangerously-skip-permissions --model opus"
     log_debug "Prompt length: ${#prompt} characters"
 
     echo ""
@@ -372,9 +372,9 @@ Working directory: ${project_dir}"
 
     # Run Claude Code with the prompt
     # Using --dangerously-skip-permissions for autonomous operation
-    # No --model flag: uses Claude Code's default model
+    # Using --model opus for best quality
     local exit_code=0
-    if claude -p "$prompt" --dangerously-skip-permissions 2>&1 | tee "$log_file"; then
+    if claude -p "$prompt" --dangerously-skip-permissions --model opus 2>&1 | tee "$log_file"; then
         exit_code=0
     else
         exit_code=$?
@@ -432,7 +432,7 @@ main() {
     echo "║  Workspace:     ${WORKSPACE_DIR}"
     echo "║  Poll Interval: ${POLL_INTERVAL}s"
     echo "║  GitHub:        $([ -n "$GITHUB_TOKEN" ] && echo "configured" || echo "NOT configured")"
-    echo "║  Claude Model:  (uses Claude Code default)"
+    echo "║  Claude Model:  opus"
     echo "╚══════════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
