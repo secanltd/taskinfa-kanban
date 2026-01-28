@@ -19,43 +19,75 @@ IMAGE_NAME="taskinfa-worker"
 NETWORK_NAME="taskinfa-workers"
 
 # Default worker
-DEFAULT_WORKER="worker-cihan"
+DEFAULT_WORKER="cihan"
 
-# Load environment variables
+# Normalize worker name for env vars: dev-alice → DEV_ALICE
+normalize_name() {
+    echo "$1" | tr '[:lower:]-' '[:upper:]_'
+}
+
+# Capitalize first letter for display: dev-alice → Dev-alice
+capitalize_name() {
+    echo "$(tr '[:lower:]' '[:upper:]' <<< ${1:0:1})${1:1}"
+}
+
+# Load environment variables for a specific worker
 load_env() {
-    if [ -f "$PROJECT_DIR/.env" ]; then
-        export TASKINFA_API_KEY=$(grep TASKINFA_API_KEY "$PROJECT_DIR/.env" | cut -d'=' -f2)
-    fi
+    local worker_name="${1:-}"
 
-    # Extract OAuth token from macOS Keychain
+    # Extract OAuth token from macOS Keychain (shared across workers)
     if command -v security &> /dev/null; then
         export CLAUDE_CODE_OAUTH_TOKEN=$(security find-generic-password -w -s "Claude Code-credentials" -a "$USER" 2>/dev/null | jq -r '.claudeAiOauth.accessToken' 2>/dev/null || echo "")
     fi
 
-    # Optional: GitHub token for private repos
-    if [ -f "$PROJECT_DIR/.env" ] && grep -q GITHUB_TOKEN "$PROJECT_DIR/.env"; then
-        export GITHUB_TOKEN=$(grep GITHUB_TOKEN "$PROJECT_DIR/.env" | cut -d'=' -f2)
-    fi
-
-    # API URL
+    # API URL (shared)
     export TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
+
+    # Load per-worker credentials
+    if [ -n "$worker_name" ]; then
+        local worker_suffix=$(normalize_name "$worker_name")
+
+        # Per-worker Taskinfa API key
+        local api_key_var="TASKINFA_API_KEY_${worker_suffix}"
+        if [ -f "$PROJECT_DIR/.env" ] && grep -q "^${api_key_var}=" "$PROJECT_DIR/.env"; then
+            export TASKINFA_API_KEY=$(grep "^${api_key_var}=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
+        else
+            echo -e "${RED}Error: ${api_key_var} not found in .env${NC}"
+            echo "Run: npm run docker:setup ${worker_name}"
+            exit 1
+        fi
+
+        # Per-worker GitHub token
+        local github_var="GITHUB_TOKEN_${worker_suffix}"
+        if [ -f "$PROJECT_DIR/.env" ] && grep -q "^${github_var}=" "$PROJECT_DIR/.env"; then
+            export GITHUB_TOKEN=$(grep "^${github_var}=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
+        else
+            echo -e "${YELLOW}Warning: ${github_var} not found - worker cannot push/create PRs${NC}"
+        fi
+    fi
 }
 
-# Validate worker name
+# Validate worker name (any alphanumeric name with hyphens/underscores allowed)
 validate_worker() {
     local worker="$1"
-    if [[ ! "$worker" =~ ^worker- ]]; then
-        echo -e "${RED}Error: Worker name must start with 'worker-' (e.g., worker-cihan)${NC}"
+    if [ -z "$worker" ]; then
+        echo -e "${RED}Error: Worker name is required${NC}"
+        echo "Usage: npm run docker:<command> <worker-name>"
+        echo "Examples: npm run docker:up cihan"
+        echo "          npm run docker:up dev-alice"
+        echo "          npm run docker:up bot-1"
+        exit 1
+    fi
+    if [[ ! "$worker" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo -e "${RED}Error: Worker name must be alphanumeric (hyphens and underscores allowed)${NC}"
         exit 1
     fi
 }
 
-# Extract just the name part (worker-cihan -> Cihan)
+# Get display name (cihan -> Cihan, dev-alice -> Dev-alice)
 get_worker_display_name() {
     local worker="$1"
-    local name="${worker#worker-}"
-    # Capitalize first letter
-    echo "$(tr '[:lower:]' '[:upper:]' <<< ${name:0:1})${name:1}"
+    capitalize_name "$worker"
 }
 
 # Ensure Docker image is built
@@ -77,7 +109,7 @@ ensure_network() {
 cmd_up() {
     local worker="${1:-$DEFAULT_WORKER}"
     validate_worker "$worker"
-    load_env
+    load_env "$worker"
 
     local display_name=$(get_worker_display_name "$worker")
     local container="taskinfa-${worker}"
@@ -85,13 +117,19 @@ cmd_up() {
     echo -e "${BLUE}Starting ${worker} (${display_name})...${NC}"
 
     if [ -z "${TASKINFA_API_KEY:-}" ]; then
-        echo -e "${RED}Error: TASKINFA_API_KEY not found in .env${NC}"
+        echo -e "${RED}Error: TASKINFA_API_KEY not found for worker '${worker}'${NC}"
+        echo "Run: npm run docker:setup ${worker}"
         exit 1
     fi
 
     if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
         echo -e "${YELLOW}Warning: Could not extract OAuth token from Keychain${NC}"
         echo -e "${YELLOW}Worker may not be able to authenticate with Claude${NC}"
+    fi
+
+    if [ -z "${GITHUB_TOKEN:-}" ]; then
+        echo -e "${YELLOW}Warning: GITHUB_TOKEN not found for worker '${worker}'${NC}"
+        echo -e "${YELLOW}Worker will not be able to push commits or create PRs${NC}"
     fi
 
     cd "$PROJECT_DIR"
@@ -110,7 +148,7 @@ cmd_up() {
     ensure_network
 
     # Create log directory
-    mkdir -p "$PROJECT_DIR/logs/${worker#worker-}"
+    mkdir -p "$PROJECT_DIR/logs/${worker}"
 
     # Run the container
     docker run -d \
@@ -125,7 +163,7 @@ cmd_up() {
         -e "GITHUB_TOKEN=${GITHUB_TOKEN:-}" \
         -e "POLL_INTERVAL=${POLL_INTERVAL:-30}" \
         -v "${container}-workspace:/workspace" \
-        -v "$PROJECT_DIR/logs/${worker#worker-}:/app/logs" \
+        -v "$PROJECT_DIR/logs/${worker}:/app/logs" \
         -v "$HOME/.claude:/home/worker/.claude" \
         "$IMAGE_NAME"
 
@@ -173,13 +211,122 @@ cmd_logs() {
     fi
 }
 
+cmd_setup() {
+    local worker="${1:-}"
+
+    if [ -z "$worker" ]; then
+        echo -e "${RED}Error: Worker name required${NC}"
+        echo "Usage: npm run docker:setup <name>"
+        echo "Examples: npm run docker:setup cihan"
+        echo "          npm run docker:setup dev-alice"
+        echo "          npm run docker:setup bot-1"
+        exit 1
+    fi
+
+    validate_worker "$worker"
+
+    local display_name=$(capitalize_name "$worker")
+    local worker_suffix=$(normalize_name "$worker")
+    local api_key_var="TASKINFA_API_KEY_${worker_suffix}"
+    local github_token_var="GITHUB_TOKEN_${worker_suffix}"
+
+    echo ""
+    echo -e "${BLUE}Docker Worker Setup: ${display_name}${NC}"
+    echo "========================================"
+    echo ""
+
+    # Ensure .env file exists
+    if [ ! -f "$PROJECT_DIR/.env" ]; then
+        touch "$PROJECT_DIR/.env"
+    fi
+
+    # --- Taskinfa API Key ---
+    echo -e "${BLUE}Step 1: Taskinfa API Key${NC}"
+    echo "Each worker needs its own API key for task access control."
+    echo ""
+
+    if grep -q "^${api_key_var}=" "$PROJECT_DIR/.env" 2>/dev/null; then
+        echo -e "${GREEN}✓ ${api_key_var} already configured${NC}"
+        read -p "Update it? (y/N): " update_api
+        if [[ "$update_api" == "y" || "$update_api" == "Y" ]]; then
+            echo ""
+            echo "Create a new API key in the Taskinfa dashboard:"
+            echo "  → Settings → API Keys → Create Key → Name: '${worker}'"
+            echo ""
+            read -sp "Enter Taskinfa API key for ${worker}: " api_key
+            echo ""
+            # Use a different delimiter for sed since API keys might contain /
+            sed -i '' "s|^${api_key_var}=.*|${api_key_var}=${api_key}|" "$PROJECT_DIR/.env"
+            echo -e "${GREEN}✓ ${api_key_var} updated${NC}"
+        fi
+    else
+        echo "Create an API key in the Taskinfa dashboard:"
+        echo "  → Settings → API Keys → Create Key → Name: '${worker}'"
+        echo ""
+        read -sp "Enter Taskinfa API key for ${worker}: " api_key
+        echo ""
+        if [ -z "$api_key" ]; then
+            echo -e "${RED}No API key provided. Aborting.${NC}"
+            exit 1
+        fi
+        echo "${api_key_var}=${api_key}" >> "$PROJECT_DIR/.env"
+        echo -e "${GREEN}✓ ${api_key_var} saved${NC}"
+    fi
+
+    echo ""
+
+    # --- GitHub Token ---
+    echo -e "${BLUE}Step 2: GitHub Token${NC}"
+    echo "For cloning repos and creating PRs."
+    echo ""
+
+    if grep -q "^${github_token_var}=" "$PROJECT_DIR/.env" 2>/dev/null; then
+        echo -e "${GREEN}✓ ${github_token_var} already configured${NC}"
+        read -p "Update it? (y/N): " update_gh
+        if [[ "$update_gh" == "y" || "$update_gh" == "Y" ]]; then
+            echo ""
+            echo "Create token at: https://github.com/settings/tokens/new"
+            echo "Required scopes: repo (full control)"
+            echo ""
+            read -sp "Enter GitHub token for ${worker}: " gh_token
+            echo ""
+            sed -i '' "s|^${github_token_var}=.*|${github_token_var}=${gh_token}|" "$PROJECT_DIR/.env"
+            echo -e "${GREEN}✓ ${github_token_var} updated${NC}"
+        fi
+    else
+        local worker_lower=$(echo "$worker" | tr '[:upper:]' '[:lower:]')
+        echo "Option 1: Create a GitHub account for this worker (recommended)"
+        echo "          e.g., 'taskinfa-worker-${worker_lower}'"
+        echo ""
+        echo "Option 2: Use your personal token (all workers show as you)"
+        echo ""
+        echo "Create token at: https://github.com/settings/tokens/new"
+        echo "Required scopes: repo (full control)"
+        echo ""
+        read -sp "Enter GitHub token for ${worker}: " gh_token
+        echo ""
+        if [ -z "$gh_token" ]; then
+            echo -e "${RED}No GitHub token provided. Aborting.${NC}"
+            exit 1
+        fi
+        echo "${github_token_var}=${gh_token}" >> "$PROJECT_DIR/.env"
+        echo -e "${GREEN}✓ ${github_token_var} saved${NC}"
+    fi
+
+    echo ""
+    echo -e "${GREEN}Setup complete for ${display_name}!${NC}"
+    echo ""
+    echo "Start the worker:"
+    echo -e "  ${BLUE}npm run docker:up ${worker}${NC}"
+}
+
 cmd_status() {
     echo -e "${BLUE}Docker Worker Status${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Find all taskinfa worker containers (running and stopped)
     local found=false
-    for container in $(docker ps -a --filter "name=taskinfa-worker-" --format "{{.Names}}" 2>/dev/null); do
+    for container in $(docker ps -a --filter "name=taskinfa-" --format "{{.Names}}" 2>/dev/null | grep -v "taskinfa-workers"); do
         found=true
         local worker="${container#taskinfa-}"
         if docker ps -q -f name="$container" | grep -q .; then
@@ -196,9 +343,10 @@ cmd_status() {
 
     echo ""
     echo -e "${BLUE}Quick Commands:${NC}"
-    echo "  npm run docker:up worker-<name>     # Start worker with any name"
-    echo "  npm run docker:down worker-<name>   # Stop worker"
-    echo "  npm run docker:logs worker-<name>   # View logs"
+    echo "  npm run docker:setup <name>    # Setup credentials for a worker"
+    echo "  npm run docker:up <name>       # Start worker"
+    echo "  npm run docker:down <name>     # Stop worker"
+    echo "  npm run docker:logs <name>     # View logs"
 }
 
 cmd_build() {
@@ -229,7 +377,7 @@ cmd_clean() {
     echo -e "${YELLOW}Cleaning up Docker resources...${NC}"
 
     # Stop and remove all taskinfa worker containers
-    for container in $(docker ps -a --filter "name=taskinfa-worker-" --format "{{.Names}}" 2>/dev/null); do
+    for container in $(docker ps -a --filter "name=taskinfa-" --format "{{.Names}}" 2>/dev/null | grep -v "taskinfa-workers"); do
         echo -e "  Removing ${container}..."
         docker stop "$container" 2>/dev/null || true
         docker rm "$container" 2>/dev/null || true
@@ -247,23 +395,31 @@ cmd_help() {
     echo "Usage: npm run docker:<command> [worker-name]"
     echo ""
     echo "Commands:"
-    echo "  docker:up [worker]      Start a worker (default: worker-cihan)"
-    echo "  docker:down [worker]    Stop a worker"
-    echo "  docker:restart [worker] Restart a worker"
-    echo "  docker:logs [worker]    Follow worker logs"
+    echo "  docker:setup <name>     Setup credentials for a new worker (REQUIRED first)"
+    echo "  docker:up [name]        Start a worker (default: cihan)"
+    echo "  docker:down [name]      Stop a worker"
+    echo "  docker:restart [name]   Restart a worker"
+    echo "  docker:logs [name]      Follow worker logs"
     echo "  docker:status           Show status of all workers"
     echo "  docker:build            Build/rebuild worker image"
-    echo "  docker:shell [worker]   Open bash shell in worker container"
+    echo "  docker:shell [name]     Open bash shell in worker container"
     echo "  docker:clean            Stop all workers and clean up"
     echo ""
     echo "Worker names:"
-    echo "  Use any name with 'worker-' prefix: worker-cihan, worker-john, worker-bot1"
-    echo "  The name after 'worker-' becomes the display name (capitalized)"
+    echo "  Use any alphanumeric name: cihan, dev-alice, bot-1"
+    echo "  The name is used for:"
+    echo "    - Container name: taskinfa-<name>"
+    echo "    - Env vars: TASKINFA_API_KEY_<NAME>, GITHUB_TOKEN_<NAME>"
+    echo "    - Git identity: Taskinfa Worker <Name>"
+    echo ""
+    echo "First-time setup:"
+    echo "  npm run docker:setup cihan        # Setup API key + GitHub token"
+    echo "  npm run docker:up cihan           # Start worker"
     echo ""
     echo "Examples:"
-    echo "  npm run docker:up worker-cihan    # Start worker named 'Cihan'"
-    echo "  npm run docker:up worker-bot1     # Start worker named 'Bot1'"
-    echo "  npm run docker:logs worker-cihan  # View logs"
+    echo "  npm run docker:setup dev-alice    # Setup new worker 'dev-alice'"
+    echo "  npm run docker:up cihan           # Start worker named 'Cihan'"
+    echo "  npm run docker:logs bot-1         # View logs for 'bot-1'"
     echo "  npm run docker:status             # Show all workers"
 }
 
@@ -272,6 +428,7 @@ command="${1:-help}"
 worker="${2:-}"
 
 case "$command" in
+    setup)   cmd_setup "$worker" ;;
     up)      cmd_up "$worker" ;;
     down)    cmd_down "$worker" ;;
     restart) cmd_restart "$worker" ;;

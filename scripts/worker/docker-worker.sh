@@ -1,6 +1,7 @@
 #!/bin/bash
 # Taskinfa-Kanban Multi-Project Docker Worker
-# Fetches highest priority task across ALL projects and executes with Claude Code
+# Fetches highest priority task across ALL projects, executes with Claude Code,
+# creates feature branch, pushes, and creates PR
 
 set -euo pipefail
 
@@ -44,14 +45,26 @@ log_error() {
     log "${RED}[ERROR]${NC} $1"
 }
 
-# Configure git credentials if GitHub token is provided
+# Configure git credentials and identity
 configure_git() {
+    log_info "Configuring git..."
+
+    # Set git identity
+    local worker_lower=$(echo "$WORKER_NAME" | tr '[:upper:]' '[:lower:]')
+    git config --global user.email "worker-${worker_lower}@taskinfa.dev"
+    git config --global user.name "Taskinfa Worker ${WORKER_NAME}"
+
+    # Configure credentials if GitHub token is provided
     if [ -n "$GITHUB_TOKEN" ]; then
-        log_info "Configuring git credentials..."
         git config --global credential.helper store
         echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
-        git config --global user.email "worker@taskinfa-kanban.dev"
-        git config --global user.name "Taskinfa Worker ${WORKER_NAME}"
+        chmod 600 ~/.git-credentials
+
+        # Configure gh CLI to use the token
+        echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null || true
+        log_info "GitHub credentials configured"
+    else
+        log_warn "No GITHUB_TOKEN - will not be able to push or create PRs"
     fi
 }
 
@@ -111,9 +124,12 @@ ensure_project() {
     local project_dir="${WORKSPACE_DIR}/${project_id}"
 
     if [ -d "$project_dir/.git" ]; then
-        log_info "Project ${project_id} already cloned, pulling latest..." >&2
+        log_info "Project ${project_id} already cloned, fetching latest..." >&2
         cd "$project_dir"
-        git pull --ff-only 2>/dev/null || log_warn "Could not pull latest changes" >&2
+        git fetch origin >&2 || log_warn "Could not fetch from remote" >&2
+        # Reset to main/master to get clean state
+        git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+        git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || true
     elif [ -n "$repo_url" ]; then
         log_info "Cloning project ${project_id} from ${repo_url}..." >&2
 
@@ -134,12 +150,114 @@ ensure_project() {
     echo "$project_dir"
 }
 
+# Create feature branch for task
+create_feature_branch() {
+    local task_id="$1"
+    local project_dir="$2"
+    local branch_name="task/${task_id}"
+
+    cd "$project_dir"
+
+    # Ensure we're on main/master and up to date
+    git fetch origin >&2
+    local default_branch
+    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+    # Create and checkout the feature branch
+    git checkout -B "$branch_name" "origin/${default_branch}" >&2 || {
+        log_error "Failed to create branch ${branch_name}" >&2
+        return 1
+    }
+
+    log_info "Created branch: ${branch_name}" >&2
+    echo "$branch_name"
+}
+
+# Push branch and create PR
+create_pull_request() {
+    local task_id="$1"
+    local task_title="$2"
+    local task_desc="$3"
+    local branch_name="$4"
+    local project_dir="$5"
+
+    cd "$project_dir"
+
+    # Check if there are any commits to push
+    local default_branch
+    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+    if ! git log "origin/${default_branch}..HEAD" --oneline 2>/dev/null | grep -q .; then
+        log_warn "No commits to push" >&2
+        echo ""
+        return 0
+    fi
+
+    # Check if GITHUB_TOKEN is available
+    if [ -z "$GITHUB_TOKEN" ]; then
+        log_warn "No GITHUB_TOKEN - cannot push or create PR" >&2
+        echo ""
+        return 0
+    fi
+
+    # Push the branch
+    log_info "Pushing branch ${branch_name}..." >&2
+    if ! git push -u origin "$branch_name" >&2; then
+        log_error "Failed to push branch" >&2
+        echo ""
+        return 1
+    fi
+
+    # Create PR
+    log_info "Creating pull request..." >&2
+    local pr_body="## Task
+
+${task_desc}
+
+---
+*Completed by Taskinfa Worker ${WORKER_NAME}*
+*Task ID: ${task_id}*"
+
+    local pr_url
+    pr_url=$(gh pr create \
+        --title "${task_title}" \
+        --body "$pr_body" \
+        --base "${default_branch}" \
+        --head "$branch_name" 2>&1) || true
+
+    if [[ "$pr_url" == https://* ]]; then
+        log_success "PR created: ${pr_url}" >&2
+        echo "$pr_url"
+    else
+        log_error "Failed to create PR: ${pr_url}" >&2
+        # Still return success since we pushed the branch
+        echo "branch:${branch_name}"
+    fi
+}
+
+# Cleanup branch on failure
+cleanup_branch() {
+    local branch_name="$1"
+    local project_dir="$2"
+
+    cd "$project_dir"
+
+    # Checkout main/master
+    git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+
+    # Delete the failed branch
+    git branch -D "$branch_name" 2>/dev/null || true
+
+    log_info "Cleaned up branch: ${branch_name}"
+}
+
 # Execute task with Claude Code
 execute_task() {
     local task_id="$1"
     local task_title="$2"
     local task_desc="$3"
     local project_dir="$4"
+    local branch_name="$5"
 
     local log_file="${LOG_DIR}/task-${task_id}-$(date '+%Y%m%d-%H%M%S').log"
 
@@ -152,15 +270,16 @@ DESCRIPTION:
 ${task_desc}
 
 INSTRUCTIONS:
-1. Work autonomously to complete the task
+1. You are on branch '${branch_name}' (already created for you)
 2. Make all necessary code changes
 3. Run tests if applicable
-4. Commit your changes with a descriptive message
-5. When done, provide a brief summary of what you did
+4. Commit your changes with descriptive messages
+5. DO NOT push or create a PR - the worker script handles that
+6. When done, provide a brief summary of what you did
 
-Work in the current directory: ${project_dir}"
+Working directory: ${project_dir}"
 
-    log_info "Executing task with Claude Code..."
+    log_info "Executing task with Claude Code on branch ${branch_name}..."
 
     cd "$project_dir"
 
@@ -193,6 +312,7 @@ main() {
     echo "   API: ${TASKINFA_API_URL}"
     echo "   Workspace: ${WORKSPACE_DIR}"
     echo "   Poll Interval: ${POLL_INTERVAL}s"
+    echo "   GitHub: ${GITHUB_TOKEN:+configured}${GITHUB_TOKEN:-NOT configured}"
     echo "========================================"
     echo ""
 
@@ -250,12 +370,47 @@ main() {
             continue
         fi
 
+        # Create feature branch (only for git repos)
+        branch_name=""
+        if [ -d "$project_dir/.git" ] && [ -n "$repo_url" ]; then
+            branch_name=$(create_feature_branch "$task_id" "$project_dir")
+            if [ -z "$branch_name" ]; then
+                log_error "Failed to create feature branch"
+                update_task "$task_id" '{"status": "todo", "assigned_to": "", "completion_notes": "Worker '"${WORKER_NAME}"' failed to create branch"}'
+                continue
+            fi
+        fi
+
         # Execute the task
-        if execute_task "$task_id" "$task_title" "$task_desc" "$project_dir"; then
+        if execute_task "$task_id" "$task_title" "$task_desc" "$project_dir" "$branch_name"; then
             log_success "Task completed successfully!"
-            update_task "$task_id" "{\"status\": \"review\", \"completion_notes\": \"Completed by ${WORKER_NAME}\"}"
+
+            # Try to push and create PR (only for git repos with branches)
+            if [ -n "$branch_name" ]; then
+                pr_result=$(create_pull_request "$task_id" "$task_title" "$task_desc" "$branch_name" "$project_dir")
+
+                if [[ "$pr_result" == https://* ]]; then
+                    # PR created successfully
+                    update_task "$task_id" "{\"status\": \"review\", \"completion_notes\": \"Completed by ${WORKER_NAME}. PR: ${pr_result}\"}"
+                elif [[ "$pr_result" == branch:* ]]; then
+                    # Branch pushed but PR creation failed
+                    update_task "$task_id" "{\"status\": \"review\", \"completion_notes\": \"Completed by ${WORKER_NAME}. Branch pushed: ${pr_result#branch:}\"}"
+                else
+                    # No commits or no GitHub token
+                    update_task "$task_id" "{\"status\": \"review\", \"completion_notes\": \"Completed by ${WORKER_NAME}. Changes committed locally.\"}"
+                fi
+            else
+                # No git repo - just mark as completed
+                update_task "$task_id" "{\"status\": \"review\", \"completion_notes\": \"Completed by ${WORKER_NAME}\"}"
+            fi
         else
             log_error "Task execution failed"
+
+            # Cleanup the branch on failure
+            if [ -n "$branch_name" ]; then
+                cleanup_branch "$branch_name" "$project_dir"
+            fi
+
             update_task "$task_id" "{\"status\": \"todo\", \"assigned_to\": \"\", \"completion_notes\": \"Failed execution by ${WORKER_NAME}. Check logs.\"}"
         fi
 

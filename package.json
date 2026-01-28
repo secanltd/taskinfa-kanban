@@ -15,6 +15,7 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "dashboard:dev": "npm run dev --workspace=packages/dashboard",
     "bot:run": "npm run start --workspace=packages/bot",
+    "docker:setup": "./scripts/docker-manage.sh setup",
     "docker:up": "./scripts/docker-manage.sh up",
     "docker:down": "./scripts/docker-manage.sh down",
     "docker:restart": "./scripts/docker-manage.sh restart",
