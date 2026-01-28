@@ -7,7 +7,8 @@ export default function LoginPage() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center gap-2">
             <span className="text-2xl">⚡</span>
-            <h1 className="text-2xl font-bold text-terminal-text">Taskinfa</h1>
+            <h1 className="text-2xl font-bold text-terminal-text">Kanban</h1>
+            <span className="text-sm text-terminal-muted">by Taskinfa</span>
           </div>
           <p className="text-terminal-muted text-sm mt-1">
             Autonomous task automation with Claude Code

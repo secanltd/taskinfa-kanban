@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Taskinfa Dashboard',
+  title: 'Kanban — by Taskinfa',
   description: 'Autonomous task automation with Claude Code',
 };
 
