@@ -8,7 +8,7 @@ set -euo pipefail
 # Configuration from environment variables
 WORKER_NAME="${WORKER_NAME:-Worker-1}"
 TASKINFA_API_KEY="${TASKINFA_API_KEY:?Error: TASKINFA_API_KEY is required}"
-TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
+TASKINFA_API_URL="${TASKINFA_API_URL:-https://kanban.taskinfa.com/api}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 

@@ -27,7 +27,7 @@ TASK_LIST_ID="${TASK_LIST_ID:-default}"
 WORKER_NAME="${WORKER_NAME:-Worker-1}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
 TASKINFA_API_KEY="${TASKINFA_API_KEY:-}"
-TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
+TASKINFA_API_URL="${TASKINFA_API_URL:-https://kanban.taskinfa.com/api}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 # Workspace directory

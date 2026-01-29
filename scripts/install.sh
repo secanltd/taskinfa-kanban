@@ -302,7 +302,7 @@ TASK_LIST_ID=$PROJECT_ID
 WORKER_NAME=$WORKER_NAME
 POLL_INTERVAL=30
 TASKINFA_API_KEY=$API_KEY
-TASKINFA_API_URL=https://taskinfa-kanban.secan-ltd.workers.dev/api
+TASKINFA_API_URL=https://kanban.taskinfa.com/api
 GITHUB_TOKEN=$GITHUB_TOKEN
 EOF
 

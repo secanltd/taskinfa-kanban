@@ -40,12 +40,17 @@ load_env() {
         export CLAUDE_CODE_OAUTH_TOKEN=$(security find-generic-password -w -s "Claude Code-credentials" -a "$USER" 2>/dev/null | jq -r '.claudeAiOauth.accessToken' 2>/dev/null || echo "")
     fi
 
-    # API URL (shared)
-    export TASKINFA_API_URL="${TASKINFA_API_URL:-https://taskinfa-kanban.secan-ltd.workers.dev/api}"
-
     # Load per-worker credentials
     if [ -n "$worker_name" ]; then
         local worker_suffix=$(normalize_name "$worker_name")
+
+        # Per-worker API URL (falls back to shared TASKINFA_API_URL, then default)
+        local api_url_var="TASKINFA_API_URL_${worker_suffix}"
+        if [ -f "$PROJECT_DIR/.env" ] && grep -q "^${api_url_var}=" "$PROJECT_DIR/.env"; then
+            export TASKINFA_API_URL=$(grep "^${api_url_var}=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
+        else
+            export TASKINFA_API_URL="${TASKINFA_API_URL:-https://kanban.taskinfa.com/api}"
+        fi
 
         # Per-worker Taskinfa API key
         local api_key_var="TASKINFA_API_KEY_${worker_suffix}"
@@ -311,6 +316,36 @@ cmd_setup() {
         fi
         echo "${github_token_var}=${gh_token}" >> "$PROJECT_DIR/.env"
         echo -e "${GREEN}✓ ${github_token_var} saved${NC}"
+    fi
+
+    echo ""
+
+    # --- Kanban Board URL ---
+    echo -e "${BLUE}Step 3: Kanban Board URL${NC}"
+    echo "The bot polls this URL every 30 seconds to fetch and claim tasks."
+    echo "If you use kanban.taskinfa.com, just press Enter to keep the default."
+    echo "If you run the board locally or on your own Cloudflare account,"
+    echo "enter your custom URL (e.g. http://localhost:3000/api)."
+    echo ""
+
+    local api_url_var="TASKINFA_API_URL_${worker_suffix}"
+    local default_api_url="https://kanban.taskinfa.com/api"
+
+    if grep -q "^${api_url_var}=" "$PROJECT_DIR/.env" 2>/dev/null; then
+        local current_url=$(grep "^${api_url_var}=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
+        echo -e "${GREEN}✓ ${api_url_var} already configured: ${current_url}${NC}"
+        read -p "Update it? (y/N): " update_url
+        if [[ "$update_url" == "y" || "$update_url" == "Y" ]]; then
+            read -p "Enter Kanban board API URL [${default_api_url}]: " api_url
+            api_url="${api_url:-$default_api_url}"
+            sed -i '' "s|^${api_url_var}=.*|${api_url_var}=${api_url}|" "$PROJECT_DIR/.env"
+            echo -e "${GREEN}✓ ${api_url_var} updated${NC}"
+        fi
+    else
+        read -p "Enter Kanban board API URL [${default_api_url}]: " api_url
+        api_url="${api_url:-$default_api_url}"
+        echo "${api_url_var}=${api_url}" >> "$PROJECT_DIR/.env"
+        echo -e "${GREEN}✓ ${api_url_var} saved${NC}"
     fi
 
     echo ""
