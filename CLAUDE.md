@@ -60,6 +60,21 @@ feat: Add task filtering by priority
 
 ## Development Workflow
 
+### ❌ NEVER Push Directly to Main
+The `main` branch is **protected**. Direct pushes will be rejected.
+Always create a feature branch and open a Pull Request.
+
+```bash
+# WRONG - will be rejected
+git push origin main  # ❌
+
+# CORRECT - create a branch and PR
+git checkout -b feature/my-change
+# ... make changes, commit ...
+git push -u origin feature/my-change
+gh pr create --title "feat: My change" --body "Description"
+```
+
 ### Before Committing
 1. Test changes locally
 2. Run linter: `npm run lint`
