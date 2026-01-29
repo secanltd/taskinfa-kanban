@@ -35,14 +35,14 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     // Get workers with their current task info
-    // Workers are considered online if heartbeat is within last 30 seconds
+    // Workers are considered online if heartbeat is within last 120 seconds
     const workers = await query<WorkerRow>(db, `
       SELECT
         w.*,
         t.title as current_task_title,
         CASE
           WHEN w.last_heartbeat IS NULL THEN 'offline'
-          WHEN datetime(w.last_heartbeat) > datetime('now', '-30 seconds') THEN w.status
+          WHEN datetime(w.last_heartbeat) > datetime('now', '-120 seconds') THEN w.status
           ELSE 'offline'
         END as effective_status
       FROM workers w

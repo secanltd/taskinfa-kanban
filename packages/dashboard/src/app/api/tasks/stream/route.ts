@@ -76,14 +76,14 @@ export async function GET(request: NextRequest) {
             LIMIT 50
           `, [workspaceId, lastTaskUpdate]);
 
-          // Get current worker statuses (online = heartbeat in last 30s)
+          // Get current worker statuses (online = heartbeat in last 120s)
           const workers = await query<WorkerStatus>(db, `
             SELECT
               w.id,
               w.name,
               CASE
                 WHEN w.last_heartbeat IS NULL THEN 'offline'
-                WHEN datetime(w.last_heartbeat) > datetime('now', '-30 seconds') THEN w.status
+                WHEN datetime(w.last_heartbeat) > datetime('now', '-120 seconds') THEN w.status
                 ELSE 'offline'
               END as status,
               w.current_task_id,
