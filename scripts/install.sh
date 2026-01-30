@@ -321,9 +321,6 @@ set -euo pipefail
 # Load environment
 source "$(dirname "$0")/.env"
 
-export CLAUDE_CODE_TASK_LIST_ID="taskinfa-${TASK_LIST_ID}"
-export CLAUDE_CODE_ENABLE_TASKS=true
-
 echo "🚀 Taskinfa Worker starting..."
 echo "   Project: ${TASK_LIST_ID}"
 echo "   Worker: ${WORKER_NAME}"

@@ -62,17 +62,20 @@ feat: Add task filtering by priority
 
 ### ❌ NEVER Push Directly to Main
 The `main` branch is **protected**. Direct pushes will be rejected.
-Always create a feature branch and open a Pull Request.
+
+### Commit Workflow (ALWAYS follow this)
+When asked to commit changes:
+1. Create a feature branch from the current branch (e.g. `fix/short-description` or `feat/short-description`)
+2. Commit the changes on that branch
+3. Push the branch with `-u`
+4. Output the GitHub PR creation URL so the user can open a PR
 
 ```bash
-# WRONG - will be rejected
-git push origin main  # ❌
-
-# CORRECT - create a branch and PR
-git checkout -b feature/my-change
-# ... make changes, commit ...
-git push -u origin feature/my-change
-gh pr create --title "feat: My change" --body "Description"
+git checkout -b feat/my-change
+git add <files>
+git commit -m "feat: My change"
+git push -u origin feat/my-change
+# Then output: https://github.com/secanltd/taskinfa-kanban/compare/feat/my-change?expand=1
 ```
 
 ### Before Committing
