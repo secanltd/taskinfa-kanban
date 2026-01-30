@@ -18,6 +18,7 @@ import type {
   AddTaskCommentRequest,
   ListTaskCommentsRequest,
   ClaimTaskRequest,
+  CreateTaskRequest,
   TaskStatus,
 } from '@taskinfa/shared';
 import { getDb, query, queryOne, execute } from '../db/client';
@@ -69,6 +70,10 @@ export class TaskinfaMCPServer {
             return await this.handleListComments((args || {}) as unknown as ListTaskCommentsRequest);
           case 'claim_task':
             return await this.handleClaimTask((args || {}) as unknown as ClaimTaskRequest);
+          case 'create_task':
+            return await this.handleCreateTask((args || {}) as unknown as CreateTaskRequest);
+          case 'reorder_task':
+            return await this.handleReorderTask((args || {}) as unknown as { task_id: string; status: TaskStatus; order: number });
           case 'list_task_lists':
             return await this.handleListTaskLists((args || {}) as unknown as { workspace_id: string });
           case 'get_task_list':
@@ -262,6 +267,72 @@ export class TaskinfaMCPServer {
             },
           },
           required: ['task_id', 'bot_name'],
+        },
+      },
+      {
+        name: 'create_task',
+        description:
+          'Create a new task in a task list. The task is created in "backlog" status by default. Use reorder_task afterwards to place it in a specific position within a column.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            workspace_id: {
+              type: 'string',
+              description: 'Workspace ID',
+            },
+            task_list_id: {
+              type: 'string',
+              description: 'Task list (project) ID to create the task in',
+            },
+            title: {
+              type: 'string',
+              description: 'Task title (1-500 characters)',
+            },
+            description: {
+              type: 'string',
+              description: 'Task description (optional, max 5000 characters)',
+            },
+            priority: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'urgent'],
+              description: 'Task priority (default: medium)',
+            },
+            status: {
+              type: 'string',
+              enum: ['backlog', 'todo', 'in_progress', 'review', 'done'],
+              description: 'Initial task status (default: backlog)',
+            },
+            labels: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Labels/tags for the task (optional)',
+            },
+          },
+          required: ['workspace_id', 'task_list_id', 'title'],
+        },
+      },
+      {
+        name: 'reorder_task',
+        description:
+          'Move a task to a specific position within a status column. Order 0 = top of column. Other tasks in the column are shifted to make room.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_id: {
+              type: 'string',
+              description: 'Task ID to reorder',
+            },
+            status: {
+              type: 'string',
+              enum: ['backlog', 'todo', 'in_progress', 'review', 'done'],
+              description: 'Target status column (can move task to a different column)',
+            },
+            order: {
+              type: 'number',
+              description: 'Target position within the column (0 = top)',
+            },
+          },
+          required: ['task_id', 'status', 'order'],
         },
       },
       {
@@ -620,6 +691,143 @@ export class TaskinfaMCPServer {
             success: true,
             task: parsedTask,
           }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async handleCreateTask(args: CreateTaskRequest & { status?: TaskStatus }) {
+    const { workspace_id, task_list_id, title, description, priority = 'medium', labels = [], status = 'backlog' } = args;
+
+    if (!workspace_id) throw new Error('workspace_id is required');
+    if (!task_list_id) throw new Error('task_list_id is required');
+    if (!title || title.length === 0) throw new Error('title is required');
+    if (title.length > 500) throw new Error('title must be 500 characters or less');
+    if (description && description.length > 5000) throw new Error('description must be 5000 characters or less');
+
+    // Verify task list exists and belongs to workspace
+    const taskList = await queryOne<TaskList>(
+      this.db,
+      'SELECT id FROM task_lists WHERE id = ? AND workspace_id = ?',
+      [task_list_id, workspace_id]
+    );
+
+    if (!taskList) {
+      throw new Error(`Task list not found: ${task_list_id}`);
+    }
+
+    // Get next order number for target status column
+    const maxOrderResult = await queryOne<{ max_order: number }>(
+      this.db,
+      'SELECT COALESCE(MAX("order"), -1) as max_order FROM tasks WHERE task_list_id = ? AND status = ?',
+      [task_list_id, status]
+    );
+
+    const nextOrder = (maxOrderResult?.max_order ?? -1) + 1;
+
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    await execute(
+      this.db,
+      `INSERT INTO tasks (id, workspace_id, task_list_id, title, description, priority, labels, status, "order")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        taskId,
+        workspace_id,
+        task_list_id,
+        title,
+        description || null,
+        priority,
+        JSON.stringify(labels),
+        status,
+        nextOrder,
+      ]
+    );
+
+    // Fetch created task
+    const task = await queryOne<Task>(this.db, 'SELECT * FROM tasks WHERE id = ?', [taskId]);
+
+    if (!task) {
+      throw new Error('Failed to create task');
+    }
+
+    const parsedTask = {
+      ...task,
+      labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ task: parsedTask }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async handleReorderTask(args: { task_id: string; status: TaskStatus; order: number }) {
+    const { task_id, status, order } = args;
+
+    if (!task_id) throw new Error('task_id is required');
+    if (!status) throw new Error('status is required');
+    if (order === undefined || order < 0) throw new Error('order must be a non-negative number');
+
+    // Verify task exists
+    const task = await queryOne<Task>(this.db, 'SELECT * FROM tasks WHERE id = ?', [task_id]);
+
+    if (!task) {
+      throw new Error(`Task not found: ${task_id}`);
+    }
+
+    const taskListId = task.task_list_id;
+
+    // Shift existing tasks at or after the target position to make room
+    await execute(
+      this.db,
+      `UPDATE tasks SET "order" = "order" + 1, updated_at = datetime('now')
+       WHERE task_list_id = ? AND status = ? AND "order" >= ? AND id != ?`,
+      [taskListId, status, order, task_id]
+    );
+
+    // Build update for the moved task
+    const updates: string[] = ['"order" = ?', 'status = ?', 'updated_at = datetime("now")'];
+    const params: any[] = [order, status];
+
+    // Handle status-specific timestamps
+    if (status === 'in_progress' && task.status !== 'in_progress') {
+      updates.push('started_at = COALESCE(started_at, datetime("now"))');
+    } else if ((status === 'done' || status === 'review') && task.status !== 'done' && task.status !== 'review') {
+      updates.push('completed_at = COALESCE(completed_at, datetime("now"))');
+    }
+
+    params.push(task_id);
+
+    await execute(
+      this.db,
+      `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    // Fetch updated task
+    const updatedTask = await queryOne<Task>(this.db, 'SELECT * FROM tasks WHERE id = ?', [task_id]);
+
+    if (!updatedTask) {
+      throw new Error('Failed to fetch updated task');
+    }
+
+    const parsedTask = {
+      ...updatedTask,
+      labels: safeJsonParseArray<string>(updatedTask.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(updatedTask.files_changed as unknown as string, []),
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ task: parsedTask }, null, 2),
         },
       ],
     };
