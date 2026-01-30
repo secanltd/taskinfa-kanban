@@ -13,17 +13,6 @@ interface WorkerStatus {
   } | null;
 }
 
-interface WorkersStatusEvent {
-  workers: WorkerStatus[];
-  online_count: number;
-  working_count: number;
-}
-
-interface TasksUpdatedEvent {
-  tasks: Task[];
-  count: number;
-}
-
 interface UseTaskStreamOptions {
   onTasksUpdated?: (tasks: Task[]) => void;
   onWorkersUpdated?: (workers: WorkerStatus[]) => void;
@@ -38,6 +27,8 @@ interface UseTaskStreamReturn {
   reconnect: () => void;
 }
 
+const POLL_INTERVAL_MS = 5000;
+
 export function useTaskStream(options: UseTaskStreamOptions = {}): UseTaskStreamReturn {
   const { onTasksUpdated, onWorkersUpdated, enabled = true } = options;
 
@@ -46,95 +37,86 @@ export function useTaskStream(options: UseTaskStreamOptions = {}): UseTaskStream
   const [onlineCount, setOnlineCount] = useState(0);
   const [workingCount, setWorkingCount] = useState(0);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttempts = useRef(0);
+  // Stable refs for callbacks so the interval doesn't re-create on every render
+  const onTasksUpdatedRef = useRef(onTasksUpdated);
+  onTasksUpdatedRef.current = onTasksUpdated;
+  const onWorkersUpdatedRef = useRef(onWorkersUpdated);
+  onWorkersUpdatedRef.current = onWorkersUpdated;
+
+  // Track previous task data to detect changes
+  const lastTasksJsonRef = useRef<string>('');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cleanup = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
   }, []);
 
-  const connect = useCallback(() => {
-    if (!enabled) return;
+  const poll = useCallback(async () => {
+    try {
+      const [tasksRes, workersRes] = await Promise.all([
+        fetch('/api/tasks?limit=100'),
+        fetch('/api/workers'),
+      ]);
 
-    cleanup();
+      if (!tasksRes.ok || !workersRes.ok) {
+        setConnected(false);
+        return;
+      }
 
-    const es = new EventSource('/api/tasks/stream');
-    eventSourceRef.current = es;
-
-    es.addEventListener('connected', (e) => {
       setConnected(true);
-      reconnectAttempts.current = 0;
-      console.log('[SSE] Connected to task stream');
-    });
 
-    es.addEventListener('tasks:updated', (e) => {
-      try {
-        const data: TasksUpdatedEvent = JSON.parse(e.data);
-        if (onTasksUpdated && data.tasks.length > 0) {
-          onTasksUpdated(data.tasks);
+      // --- Tasks ---
+      const tasksData: { tasks: Task[] } = await tasksRes.json();
+      const tasksJson = JSON.stringify(tasksData.tasks);
+
+      if (tasksJson !== lastTasksJsonRef.current) {
+        lastTasksJsonRef.current = tasksJson;
+        if (onTasksUpdatedRef.current && tasksData.tasks.length > 0) {
+          onTasksUpdatedRef.current(tasksData.tasks);
         }
-      } catch (err) {
-        console.error('[SSE] Failed to parse tasks:updated event', err);
       }
-    });
 
-    es.addEventListener('workers:status', (e) => {
-      try {
-        const data: WorkersStatusEvent = JSON.parse(e.data);
-        setWorkers(data.workers);
-        setOnlineCount(data.online_count);
-        setWorkingCount(data.working_count);
-        if (onWorkersUpdated) {
-          onWorkersUpdated(data.workers);
-        }
-      } catch (err) {
-        console.error('[SSE] Failed to parse workers:status event', err);
+      // --- Workers ---
+      const workersData: {
+        workers: WorkerStatus[];
+        stats: { online: number; working: number };
+      } = await workersRes.json();
+
+      setWorkers(workersData.workers);
+      setOnlineCount(workersData.stats.online);
+      setWorkingCount(workersData.stats.working);
+
+      if (onWorkersUpdatedRef.current) {
+        onWorkersUpdatedRef.current(workersData.workers);
       }
-    });
-
-    es.addEventListener('heartbeat', () => {
-      // Connection is alive
-    });
-
-    es.addEventListener('error', (e) => {
-      console.error('[SSE] Stream error', e);
-    });
-
-    es.onerror = () => {
+    } catch {
       setConnected(false);
-      cleanup();
+    }
+  }, []);
 
-      // Exponential backoff reconnection
-      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-      reconnectAttempts.current++;
-
-      console.log(`[SSE] Disconnected. Reconnecting in ${delay / 1000}s...`);
-      reconnectTimeoutRef.current = setTimeout(connect, delay);
-    };
-  }, [enabled, onTasksUpdated, onWorkersUpdated, cleanup]);
+  const startPolling = useCallback(() => {
+    cleanup();
+    // Fire immediately, then set up interval
+    poll();
+    intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
+  }, [poll, cleanup]);
 
   const reconnect = useCallback(() => {
-    reconnectAttempts.current = 0;
-    connect();
-  }, [connect]);
+    startPolling();
+  }, [startPolling]);
 
   useEffect(() => {
     if (enabled) {
-      connect();
-    }
-
-    return () => {
+      startPolling();
+    } else {
       cleanup();
-    };
-  }, [enabled, connect, cleanup]);
+      setConnected(false);
+    }
+    return cleanup;
+  }, [enabled, startPolling, cleanup]);
 
   return {
     workers,
