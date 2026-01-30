@@ -282,6 +282,5 @@ You should stop and wait when:
 - This skill runs in an automated container
 - User doesn't interact with you directly - they manage the board
 - Your work is reviewed when tasks reach "review" status
-- Multi-session coordination via CLAUDE_CODE_TASK_LIST_ID (automatic)
 - Keep iterating through tasks until queue is empty
 - You CAN create tasks and reorder them — use this to break down work or flag issues
