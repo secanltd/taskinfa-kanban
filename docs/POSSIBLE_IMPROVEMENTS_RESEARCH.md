@@ -3,7 +3,8 @@
 **Date:** January 29, 2026
 **Author:** Lead Architect Research
 **Branch:** task/task_2RhdllXRZ_9LfBndKedUc
-**Status:** Research Complete - Awaiting Prioritization
+**Status:** Research Complete - Reviewed with Recommendations
+**Reviewed:** January 30, 2026
 
 ---
 
@@ -28,7 +29,8 @@
 7. [Database Schema Evolution](#7-database-schema-evolution)
 8. [Implementation Phases](#8-implementation-phases)
 9. [Risk Analysis](#9-risk-analysis)
-10. [Research Sources](#10-research-sources)
+10. [Review Recommendations](#10-review-recommendations)
+11. [Research Sources](#11-research-sources)
 
 ---
 
@@ -462,6 +464,8 @@ export class WorkspaceOrchestrator implements DurableObject {
 
 ### 5.4 Self-Evolving & Learning System
 
+> **Review Note:** This area is speculative at current scale. The learning feedback loop and pattern library require significant execution data volume to produce useful signal. With current single-digit users, there won't be enough data to train meaningful patterns. **Recommendation:** Defer to Phase 4. Start collecting `execution_analytics` data in Phase 2 (schema only, passive collection), but don't build the pattern library or feedback loop until there is meaningful execution history to learn from.
+
 **Current state:** No learning from past executions. Each task execution starts from scratch.
 
 **Target state:** System that learns from successes and failures to improve over time.
@@ -692,6 +696,8 @@ The **[AI Suggest]** button would analyze the task description and suggest:
 ---
 
 ### 5.6 Task Intelligence & Automation
+
+> **Review Note:** The automation rules engine described below is essentially a generic workflow automation product (trigger-condition-action with JSON definitions). Building this generically is a large effort. **Recommendation:** Start with hardcoded automation behaviors (e.g., "auto-move parent task to review when all subtasks are done", "auto-assign urgent tasks round-robin") before investing in the generic rules engine. Task dependencies and subtasks are high-value and should ship in Phase 1. The generic `automation_rules` table and engine should wait until Phase 3.
 
 **Current state:** Tasks are manually created and assigned. No dependencies, subtasks, or automation rules.
 
@@ -1157,13 +1163,36 @@ API Consumers ──────┤  Webhook Dispatcher          │
 
 ## 8. Implementation Phases
 
-### Phase 1: Team Foundation (Weeks 1-4)
+> **Review Note (Jan 30, 2026):** The original phasing has been revised based on architectural review. Key changes:
+> - **Added Phase 0** for test coverage and D1 benchmarking before adding features.
+> - **Narrowed Phase 1** to core team features only. Subtasks and search moved to Phase 2.
+> - **Automation rules engine** deferred from Phase 2 to Phase 3; replaced with hardcoded automation behaviors.
+> - **Self-evolving pattern library** deferred to Phase 4; Phase 2 collects data passively only.
+> - **Durable Objects migration** flagged as conditional — validate SSE pain first.
+> - **Existing user migration strategy** added as explicit Phase 1 task.
 
-**Goal:** Enable team collaboration and basic security hardening.
+### Phase 0: Foundation Hardening (Before Feature Work)
+
+**Goal:** Establish test coverage for existing features, benchmark D1 scalability, and document migration strategy for existing users.
+
+| Task | Priority | Effort |
+|------|----------|--------|
+| Unit + integration tests for existing API routes | Critical | Large |
+| Unit tests for auth middleware, JWT, API key flows | Critical | Medium |
+| D1 benchmark: test query performance with projected schema (15+ tables, 10k+ rows) | High | Medium |
+| Document migration strategy for existing 1:1 user-workspace data | High | Small |
+| E2E smoke tests for critical user flows (signup, login, task CRUD, Kanban drag) | Medium | Medium |
+
+**Success criteria:** Existing features have test coverage sufficient to catch regressions. D1 performance characteristics are understood at projected scale. Clear migration plan exists for breaking the 1:1 user-workspace constraint.
+
+### Phase 1: Team Foundation
+
+**Goal:** Enable team collaboration, RBAC, and basic security hardening. Narrowed scope — subtasks, search, and templates deferred to Phase 2.
 
 | Task | Priority | Effort |
 |------|----------|--------|
 | Multi-workspace membership (workspace_members table) | Critical | Large |
+| Existing user migration (auto-create membership rows, deprecate users.workspace_id) | Critical | Medium |
 | Workspace invitation flow | Critical | Medium |
 | RBAC middleware and permission checks | Critical | Large |
 | Workspace switcher UI | Critical | Medium |
@@ -1171,33 +1200,31 @@ API Consumers ──────┤  Webhook Dispatcher          │
 | Rate limiting via Cloudflare Rules | High | Small |
 | CSRF protection | High | Small |
 | Task dependencies (blocks/blocked-by) | High | Medium |
-| Subtask hierarchy (parent_task_id) | Medium | Medium |
-| Task search and filtering UI | Medium | Medium |
 
-**Success criteria:** Multiple users can collaborate in a shared workspace with proper role enforcement.
+**Success criteria:** Multiple users can collaborate in a shared workspace with proper role enforcement. Existing single-user workspaces migrated without data loss.
 
-### Phase 2: Intelligence Layer (Weeks 5-10)
+### Phase 2: Intelligence Layer
 
-**Goal:** Add automation, learning, and self-service bot management.
+**Goal:** Add self-service bot management, task hierarchy, search, and passive data collection for future learning.
 
 | Task | Priority | Effort |
 |------|----------|--------|
 | Worker management wizard in UI | Critical | Large |
 | Worker execution log viewer | High | Medium |
+| Subtask hierarchy (parent_task_id) | High | Medium |
+| Task search and filtering UI | High | Medium |
 | Task templates system | High | Medium |
-| Automation rules engine | High | Large |
-| Execution analytics collection | High | Medium |
-| Agent specialization profiles | Medium | Medium |
-| Intelligent task routing | Medium | Large |
+| Hardcoded automation behaviors (auto-move parent on subtask completion, auto-assign urgent tasks round-robin) | High | Medium |
+| Execution analytics schema + passive data collection | High | Medium |
 | Dashboard analytics page | Medium | Large |
 | Bulk task operations | Medium | Small |
 | Notification system (in-app) | Medium | Medium |
 
-**Success criteria:** Users can manage workers entirely from the web UI. Basic automation rules work. Analytics dashboard shows execution metrics.
+**Success criteria:** Users can manage workers entirely from the web UI. Subtasks and dependencies work. Execution metrics are being collected. Basic hardcoded automations function.
 
-### Phase 3: Enterprise & Integrations (Weeks 11-18)
+### Phase 3: Enterprise & Integrations
 
-**Goal:** Enterprise security, external integrations, and advanced AI features.
+**Goal:** Enterprise security, external integrations, and generic automation engine.
 
 | Task | Priority | Effort |
 |------|----------|--------|
@@ -1205,30 +1232,31 @@ API Consumers ──────┤  Webhook Dispatcher          │
 | Webhook system (outbound) | High | Medium |
 | Slack/Discord notifications | High | Medium |
 | Two-factor authentication | High | Medium |
+| Generic automation rules engine (replaces hardcoded behaviors from Phase 2) | High | Large |
 | API key scoping (permissions per key) | Medium | Medium |
-| Self-evolving pattern library | Medium | Large |
-| Agent-to-agent communication | Medium | Large |
-| Durable Objects for real-time (replace SSE polling) | Medium | Large |
+| Agent specialization profiles | Medium | Medium |
 | Email notifications | Medium | Medium |
 | Session management UI | Medium | Small |
-| Project-level permissions | Low | Medium |
+| Durable Objects for real-time (conditional — only if SSE polling is a validated pain point) | Medium | Large |
 | Content Security Policy headers | Low | Small |
 
-**Success criteria:** GitHub integration works bidirectionally. Webhook and Slack notifications functional. 2FA available. System learns from past executions.
+**Success criteria:** GitHub integration works bidirectionally. Webhook and Slack notifications functional. 2FA available. Generic automation rules replace hardcoded behaviors.
 
-### Phase 4: Platform Maturity (Weeks 19-26)
+### Phase 4: Platform Maturity & Learning
 
-**Goal:** Polish, performance, and platform capabilities.
+**Goal:** Self-evolving intelligence, multi-model support, and platform polish.
 
 | Task | Priority | Effort |
 |------|----------|--------|
+| Self-evolving pattern library (built on Phase 2 execution analytics data) | High | Large |
+| Intelligent task routing based on agent performance data | High | Large |
+| Agent-to-agent communication | High | Large |
 | Model-agnostic agent execution (support GPT, local LLMs) | High | Large |
+| Project-level permissions | Medium | Medium |
 | Advanced analytics and reporting | Medium | Large |
-| Automation template marketplace | Medium | Large |
-| Mobile-responsive improvements | Medium | Medium |
 | Self-hosted deployment option (Docker Compose) | Medium | Large |
 | API documentation (OpenAPI/Swagger) | Medium | Medium |
-| Comprehensive test suite | Medium | Large |
+| Mobile-responsive improvements | Medium | Medium |
 | Performance optimization (caching, query optimization) | Low | Medium |
 | Accessibility improvements (WCAG 2.1) | Low | Medium |
 | Internationalization (i18n) | Low | Large |
@@ -1241,7 +1269,7 @@ API Consumers ──────┤  Webhook Dispatcher          │
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| **D1 scalability limits** | Medium | High | Monitor query performance; plan migration to Turso or PlanetScale if needed |
+| **D1 scalability limits** | **High** | High | **Benchmark in Phase 0 before committing to 15+ new tables.** D1 is SQLite: no concurrent writers, 10GB limit, no built-in full-text search. `execution_analytics` and `audit_logs` will grow fast. Plan migration path to Turso or PlanetScale proactively, not reactively. |
 | **Agent sprawl** (uncontrolled bot behavior) | Medium | High | Circuit breakers, execution budgets, human approval gates |
 | **Prompt injection** via task descriptions | Medium | High | Sanitize task descriptions, sandbox execution, validate outputs |
 | **Multi-tenant data leakage** | Low | Critical | Strict workspace_id filtering in every query, integration tests |
@@ -1264,7 +1292,55 @@ API Consumers ──────┤  Webhook Dispatcher          │
 
 ---
 
-## 10. Research Sources
+## 10. Review Recommendations
+
+*Added January 30, 2026 — Architectural review of the original research document.*
+
+### Summary
+
+The research document is a thorough strategic plan with concrete schemas and a clear current-state/target-state structure. However, the original scope of 10 strategic areas across 4 phases (26 weeks) carries significant execution risk. The following recommendations have been incorporated into the document above.
+
+### Key Recommendations
+
+#### 1. Add Phase 0: Test Coverage Before Features
+
+The document identifies "only 2 unit test files" as a gap but the original plan deferred testing to Phase 4. Adding RBAC, multi-tenancy, and automation without regression test coverage is high-risk. **Phase 0 establishes the safety net before building new features.**
+
+#### 2. Benchmark D1 Before Committing to 15+ New Tables
+
+The proposed schema evolution adds `workspace_members`, `workspace_invitations`, `audit_logs`, `task_dependencies`, `agent_profiles`, `execution_analytics`, `execution_patterns`, `automation_rules`, `task_templates`, `agent_messages`, `integrations`, `webhooks`, `notifications`, `notification_preferences`, and `project_members`. D1 is SQLite with no concurrent writers and a 10GB limit. The risk table originally rated this "Medium likelihood" — it should be **High**. Benchmark with projected data volumes before committing.
+
+#### 3. Narrow Phase 1 Scope
+
+The original Phase 1 included subtasks, search, and filtering alongside the multi-workspace + RBAC migration. That is too much surface area for a single phase. **Subtasks and search are moved to Phase 2.** Phase 1 now focuses exclusively on: multi-workspace membership, RBAC, audit logging, rate limiting, CSRF protection, and task dependencies.
+
+#### 4. Plan Existing User Migration Explicitly
+
+Breaking the 1:1 user-workspace constraint is a data migration, not just a schema change. Existing users need auto-generated `workspace_members` rows, and the `users.workspace_id` column needs a deprecation path. This is now an explicit Phase 1 task.
+
+#### 5. Start Automation with Hardcoded Rules
+
+The generic automation rules engine (trigger-condition-action with JSON definitions) is essentially a product in itself. **Phase 2 now ships hardcoded automation behaviors** (e.g., auto-move parent when subtasks complete, auto-assign urgent tasks round-robin). The generic engine moves to Phase 3, informed by real usage patterns of the hardcoded behaviors.
+
+#### 6. Defer Self-Evolving Intelligence to Phase 4
+
+The learning feedback loop and pattern library (Section 5.4) require meaningful execution data to produce useful signal. With current user volume, there won't be enough data. **Phase 2 collects execution analytics passively. Phase 4 builds the intelligence layer on top of that data.**
+
+#### 7. Validate SSE Pain Before Durable Objects Migration
+
+Replacing SSE with Durable Objects (Phase 3) is a significant architectural and cost change. The current 2-second SSE polling may be adequate for most workloads. **The Durable Objects migration is now conditional** — only proceed if SSE polling is a validated user pain point, not a theoretical concern.
+
+#### 8. Competitive Positioning Should Be Realistic
+
+The competitive landscape chart places Taskinfa alongside Jira and Monday.com. The immediate competitive set is more realistically **Linear, Plane, and Taskade**. Enterprise positioning is a valid long-term target but the document should acknowledge the current starting point.
+
+### Treat This Document as a Menu, Not a Sequential Plan
+
+The 10 strategic areas are all valid directions. However, attempting to execute all of them sequentially risks scope inflation and complexity creep (rated "High likelihood" in the risk table). Each phase should be evaluated on its own merits, with user feedback gates between phases. Features that don't demonstrate user value should be deprioritized regardless of their position in the roadmap.
+
+---
+
+## 11. Research Sources
 
 ### Competitive Analysis
 - [Epicflow - Best AI Project Management Tools 2026](https://www.epicflow.com/blog/excellent-ai-project-management-software-tools-setting-new-standards/)
@@ -1307,4 +1383,4 @@ API Consumers ──────┤  Webhook Dispatcher          │
 
 ---
 
-*This document serves as the strategic foundation for Taskinfa-Kanban's evolution toward enterprise-grade, multi-agent project management. Each section can be expanded into detailed implementation specifications as phases begin.*
+*This document serves as the strategic foundation for Taskinfa-Kanban's evolution toward enterprise-grade, multi-agent project management. Each section can be expanded into detailed implementation specifications as phases begin. See [Section 10](#10-review-recommendations) for architectural review recommendations and revised phasing.*
