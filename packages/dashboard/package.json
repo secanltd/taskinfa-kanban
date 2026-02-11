@@ -19,7 +19,6 @@
     "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-prod-db --remote"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
     "@taskinfa/shared": "*",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",

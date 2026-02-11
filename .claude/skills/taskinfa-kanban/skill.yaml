@@ -1,4 +1,4 @@
 name: taskinfa-kanban
-version: 1.0.0
-description: Automated workflow for executing tasks from Taskinfa kanban board
+version: 2.0.0
+description: Autonomous task execution via REST API — reads kanban board, executes tasks, reports progress
 enabled: true

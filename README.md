@@ -1,6 +1,6 @@
 # Taskinfa Kanban
 
-Autonomous task execution system powered by Claude Code. Deploy AI workers that automatically pick up tasks from your Kanban board and execute them.
+Autonomous task execution system powered by Claude Code. An orchestrator daemon picks up tasks from your Kanban board and starts Claude sessions automatically. Monitor everything from your phone via Telegram.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
@@ -8,18 +8,19 @@ Autonomous task execution system powered by Claude Code. Deploy AI workers that 
 ## Features
 
 - **Kanban Dashboard** - Visual task management with drag-and-drop
-- **Autonomous Workers** - Docker containers that execute tasks automatically
-- **Claude Code Integration** - AI-powered code execution via MCP
-- **Real-time Updates** - SSE-based live status updates
-- **Multi-Workspace** - Isolated workspaces for different projects
-- **Secure by Design** - Isolated Docker containers, API key authentication
+- **Autonomous Orchestration** - Daemon polls the board every 15 min, starts Claude sessions
+- **Session Tracking** - Live view of active Claude sessions, events, and progress
+- **Telegram Bot** - `/status`, `/tasks`, `/new` commands + push notifications when stuck/done
+- **Overview Page** - Cross-project status at a glance
+- **Memory System** - File-based context persistence across sessions
+- **Multi-Workspace** - Isolated workspaces for different teams
 
 ## Quick Start
 
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/taskinfa-kanban.git
+git clone https://github.com/secanltd/taskinfa-kanban.git
 cd taskinfa-kanban
 npm install
 ```
@@ -28,59 +29,42 @@ npm install
 
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your settings (JWT_SECRET, etc.)
 ```
 
 ### 3. Start Dashboard
 
 ```bash
-npm run build
 npm run dashboard:dev
 ```
 
-Open http://localhost:3000, create an account, and add a task.
+Open http://localhost:3000, create an account, and add tasks.
 
-### 4. Start a Worker
+### 4. Start the Orchestrator
 
 ```bash
-./scripts/docker-manage.sh start
+KANBAN_API_URL=http://localhost:3000 KANBAN_API_KEY=<your-key> npm run orchestrator
 ```
 
-See [Worker Setup](docs/WORKER_SETUP.md) for detailed configuration.
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Local Setup](docs/SETUP.md) | Complete local development setup |
-| [Deployment](docs/DEPLOYMENT.md) | Deploy to Cloudflare Workers |
-| [Worker Setup](docs/WORKER_SETUP.md) | Configure Docker workers |
-| [API Reference](docs/API_REFERENCE.md) | REST API documentation |
-| [Architecture](docs/ARCHITECTURE.md) | System design and structure |
-| [Environment](docs/ENVIRONMENT.md) | Environment variables reference |
+The orchestrator will check for pending tasks every 15 minutes and start Claude sessions automatically.
 
 ## Architecture
 
 ```
-User Interface
-      |
-      v
-+------------------+     +------------------+
-|  Dashboard API   | <-> |   D1 Database    |
-|  (Next.js)       |     |   (SQLite)       |
-+------------------+     +------------------+
-      |
-      v
-+------------------+     +------------------+
-|   MCP Server     | <-> |   Bot Executor   |
-|                  |     |   (Docker)       |
-+------------------+     +------------------+
-                               |
-                               v
-                        +------------------+
-                        |   Claude Code    |
-                        |   CLI            |
-                        +------------------+
+Phone (Telegram)  <->  CF Worker (Bot)  <->  D1 Database  <->  Dashboard (Next.js)
+                                                  ^
+                            +--------------------------+
+                            |                          |
+                  Docker Container (24/7)              |
+                  +-------------------+                |
+                  |  Orchestrator     | polls every 15 min
+                  |  (node daemon)    | starts Claude sessions
+                  |      |            |
+                  |  +---+----+ x N   |
+                  |  | claude |       | hooks POST to /api/events
+                  |  | -p ... |       |
+                  |  +--------+       |
+                  +-------------------+
 ```
 
 **Task Status Flow:**
@@ -93,21 +77,17 @@ backlog -> todo -> in_progress -> review -> done
 ```
 taskinfa-kanban/
 ├── packages/
-│   ├── dashboard/      # Next.js app + API + MCP server
-│   ├── bot/            # Autonomous task executor
+│   ├── dashboard/      # Next.js app + API (Cloudflare Workers)
+│   ├── telegram/       # Telegram bot (Cloudflare Worker)
 │   └── shared/         # Shared TypeScript types
-├── scripts/            # Helper scripts
-├── docs/               # Documentation
-└── docker-compose.yml  # Docker configuration
+├── scripts/
+│   └── orchestrator.ts # Daemon that polls board and starts Claude
+├── .claude/
+│   ├── settings.json   # Claude Code hooks config
+│   └── skills/         # Autonomous worker skill instructions
+├── .memory/            # Cross-project runtime state
+└── docs/               # Documentation
 ```
-
-## Why Taskinfa?
-
-- **Open Source** - MIT licensed, fork and customize
-- **Self-Hosted** - Your data, your infrastructure
-- **Secure** - Workers run in isolated Docker containers
-- **Scalable** - Run multiple workers in parallel
-- **Extensible** - MCP protocol for custom integrations
 
 ## Development
 
@@ -118,8 +98,11 @@ npm run build
 # Start dashboard in dev mode
 npm run dashboard:dev
 
-# Run bot locally (without Docker)
-cd packages/bot && npm run dev
+# Start Telegram bot locally
+npm run telegram:dev
+
+# Start orchestrator
+npm run orchestrator
 
 # Run linter
 npm run lint
@@ -143,8 +126,8 @@ Copyright (c) 2025 [SECAN](https://secan.info)
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/YOUR_USERNAME/taskinfa-kanban/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/YOUR_USERNAME/taskinfa-kanban/discussions)
+- **Issues**: [GitHub Issues](https://github.com/secanltd/taskinfa-kanban/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/secanltd/taskinfa-kanban/discussions)
 
 ---
 

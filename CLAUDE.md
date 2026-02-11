@@ -112,18 +112,30 @@ ALTER TABLE tasks ADD COLUMN tags TEXT DEFAULT '[]';
 CREATE INDEX idx_tasks_tags ON tasks(tags);
 ```
 
-## MCP Server Development
+## V2 Architecture
 
-### Tool Definitions
-- Keep tool names lowercase with underscores
-- Provide clear descriptions
-- Document all parameters
-- Include examples in comments
+### Components
+1. **Dashboard** (packages/dashboard) — Next.js on CF Workers, kanban board + overview + sessions panel
+2. **Telegram Bot** (packages/telegram) — CF Worker, shares D1 database, /status /tasks /new commands
+3. **Orchestrator** (scripts/orchestrator.ts) — Node.js daemon, polls API every 15min, starts Claude sessions
+4. **Claude Hooks** (.claude/settings.json) — auto-POST status events to /api/events
 
-### Error Handling
-- Return structured error messages
-- Use `isError: true` for failures
-- Log errors for debugging
+### Key API Routes
+- `POST /api/events` — accepts events from Claude hooks, triggers Telegram notifications
+- `GET/POST /api/sessions` — CRUD for Claude Code sessions
+- `GET/PATCH /api/sessions/[id]` — individual session management
+- `GET/POST /api/tasks` — existing task CRUD
+- `GET /overview` — global project status page
+
+### Database Tables (migration 006)
+- `sessions` — tracks Claude Code sessions (replaces workers)
+- `session_events` — event stream from Claude hooks
+- `notification_config` — per-workspace Telegram settings
+
+### Memory System
+- `/workspace/.memory/overview.md` — cross-project state
+- `/workspace/.memory/preferences.md` — user conventions
+- `/workspace/<project>/.memory/context.md` — per-project state
 
 ## API Development
 
@@ -138,18 +150,20 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 - Check workspace_id matches user's access
 - Log authentication failures
 
-## Bot Development
+## Orchestrator
 
-### Execution Loop
-- Respect circuit breaker limits
-- Log progress clearly
-- Handle Claude Code timeouts gracefully
-- Clean up resources on exit
+### Configuration (Environment Variables)
+- `KANBAN_API_URL` — Dashboard API base URL
+- `KANBAN_API_KEY` — API key (Bearer token)
+- `POLL_INTERVAL` — ms between polls (default 900000 = 15min)
+- `MAX_CONCURRENT` — max parallel Claude sessions (default 3)
+- `MAX_RETRIES` — retries before marking task blocked (default 3)
 
-### Configuration
-- Use environment variables for secrets
-- Provide sensible defaults
-- Validate configuration on startup
+### Running
+```bash
+npm run orchestrator                    # direct
+pm2 start scripts/orchestrator.ts       # with pm2
+```
 
 ## Testing
 
@@ -160,7 +174,6 @@ CREATE INDEX idx_tasks_tags ON tasks(tags);
 
 ### Integration Tests (To Be Implemented)
 - Test API endpoints end-to-end
-- Test MCP server tools
 - Test database operations
 
 ## Documentation
@@ -579,8 +592,8 @@ If you previously used `@cloudflare/next-on-pages`:
 
 ---
 
-**Last Updated:** January 28, 2026
-**Project:** Taskinfa-Bot
+**Last Updated:** February 11, 2026
+**Project:** Taskinfa Kanban v2
 **Repository:** https://github.com/secanltd/taskinfa-kanban
 **Test URL:** https://taskinfa-kanban-test.secan-ltd.workers.dev
 **Production URL:** https://taskinfa-kanban-prod.secan-ltd.workers.dev
