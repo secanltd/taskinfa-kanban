@@ -1,4 +1,4 @@
-// Telegram bot command handlers
+// Telegram bot command handlers — all scoped to the user's workspace
 
 interface Env {
   DB: D1Database;
@@ -9,13 +9,14 @@ interface CommandContext {
   chatId: number;
   args: string;
   env: Env;
+  workspaceId: string;
 }
 
 type CommandResult = { text: string; parse_mode?: 'Markdown' | 'HTML' };
 
 // /status [project] — global or per-project status
 export async function handleStatus(ctx: CommandContext): Promise<CommandResult> {
-  const { env, args } = ctx;
+  const { env, args, workspaceId } = ctx;
 
   if (args) {
     // Per-project status
@@ -25,17 +26,19 @@ export async function handleStatus(ctx: CommandContext): Promise<CommandResult> 
         (SELECT COUNT(*) FROM tasks t WHERE t.task_list_id = tl.id AND t.status = 'in_progress') as in_progress_count,
         (SELECT COUNT(*) FROM tasks t WHERE t.task_list_id = tl.id AND t.status = 'done') as done_count
        FROM task_lists tl
-       WHERE tl.name LIKE ? OR tl.slug LIKE ?
+       WHERE tl.workspace_id = ? AND (tl.name LIKE ? OR tl.slug LIKE ?)
        LIMIT 1`
-    ).bind(`%${args}%`, `%${args}%`).first<any>();
+    ).bind(workspaceId, `%${args}%`, `%${args}%`).first<any>();
 
     if (!project) {
       return { text: `Project "${args}" not found.` };
     }
 
     const sessions = await env.DB.prepare(
-      `SELECT * FROM sessions WHERE project_id = ? AND status IN ('active', 'stuck') ORDER BY started_at DESC LIMIT 5`
-    ).bind(project.id).all<any>();
+      `SELECT * FROM sessions
+       WHERE workspace_id = ? AND project_id = ? AND status IN ('active', 'stuck')
+       ORDER BY started_at DESC LIMIT 5`
+    ).bind(workspaceId, project.id).all<any>();
 
     let text = `*${project.name}*\n\n`;
     text += `📝 Todo: ${project.todo_count}\n`;
@@ -55,16 +58,16 @@ export async function handleStatus(ctx: CommandContext): Promise<CommandResult> 
     return { text, parse_mode: 'Markdown' };
   }
 
-  // Global status
+  // Global status (scoped to workspace)
   const stats = await env.DB.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM sessions WHERE status = 'active') as active_sessions,
-      (SELECT COUNT(*) FROM sessions WHERE status = 'stuck') as stuck_sessions,
-      (SELECT COUNT(*) FROM tasks WHERE status = 'todo') as todo_tasks,
-      (SELECT COUNT(*) FROM tasks WHERE status = 'in_progress') as in_progress_tasks,
-      (SELECT COUNT(*) FROM tasks WHERE status = 'done') as done_tasks,
-      (SELECT COUNT(*) FROM task_lists) as total_projects
-  `).first<any>();
+      (SELECT COUNT(*) FROM sessions WHERE workspace_id = ? AND status = 'active') as active_sessions,
+      (SELECT COUNT(*) FROM sessions WHERE workspace_id = ? AND status = 'stuck') as stuck_sessions,
+      (SELECT COUNT(*) FROM tasks WHERE workspace_id = ? AND status = 'todo') as todo_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE workspace_id = ? AND status = 'in_progress') as in_progress_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE workspace_id = ? AND status = 'done') as done_tasks,
+      (SELECT COUNT(*) FROM task_lists WHERE workspace_id = ?) as total_projects
+  `).bind(workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId).first<any>();
 
   if (!stats) {
     return { text: 'Could not fetch status.' };
@@ -81,20 +84,20 @@ export async function handleStatus(ctx: CommandContext): Promise<CommandResult> 
   return { text, parse_mode: 'Markdown' };
 }
 
-// /tasks — list pending tasks
+// /tasks — list pending tasks (scoped to workspace)
 export async function handleTasks(ctx: CommandContext): Promise<CommandResult> {
-  const { env } = ctx;
+  const { env, workspaceId } = ctx;
 
   const tasks = await env.DB.prepare(
     `SELECT t.*, tl.name as project_name
      FROM tasks t
      LEFT JOIN task_lists tl ON t.task_list_id = tl.id
-     WHERE t.status IN ('todo', 'in_progress')
+     WHERE t.workspace_id = ? AND t.status IN ('todo', 'in_progress')
      ORDER BY
        CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
        t.created_at ASC
      LIMIT 20`
-  ).all<any>();
+  ).bind(workspaceId).all<any>();
 
   if (!tasks.results || tasks.results.length === 0) {
     return { text: '_No pending tasks._', parse_mode: 'Markdown' };
@@ -112,9 +115,9 @@ export async function handleTasks(ctx: CommandContext): Promise<CommandResult> {
   return { text, parse_mode: 'Markdown' };
 }
 
-// /new <project> <title> — create a new task
+// /new <project> <title> — create a new task (scoped to workspace)
 export async function handleNew(ctx: CommandContext): Promise<CommandResult> {
-  const { env, args } = ctx;
+  const { env, args, workspaceId } = ctx;
 
   if (!args) {
     return { text: 'Usage: `/new <project> <task title>`', parse_mode: 'Markdown' };
@@ -128,10 +131,10 @@ export async function handleNew(ctx: CommandContext): Promise<CommandResult> {
   const projectQuery = parts[0];
   const title = parts.slice(1).join(' ');
 
-  // Find project
+  // Find project within this workspace
   const project = await env.DB.prepare(
-    `SELECT * FROM task_lists WHERE name LIKE ? OR slug LIKE ? LIMIT 1`
-  ).bind(`%${projectQuery}%`, `%${projectQuery}%`).first<any>();
+    `SELECT * FROM task_lists WHERE workspace_id = ? AND (name LIKE ? OR slug LIKE ?) LIMIT 1`
+  ).bind(workspaceId, `%${projectQuery}%`, `%${projectQuery}%`).first<any>();
 
   if (!project) {
     return { text: `Project "${projectQuery}" not found.` };
@@ -147,7 +150,7 @@ export async function handleNew(ctx: CommandContext): Promise<CommandResult> {
   await env.DB.prepare(
     `INSERT INTO tasks (id, workspace_id, task_list_id, title, status, priority, labels, files_changed, "order")
      VALUES (?, ?, ?, ?, 'todo', 'medium', '[]', '[]', ?)`
-  ).bind(taskId, project.workspace_id, project.id, title, (maxOrder?.max_order ?? -1) + 1).run();
+  ).bind(taskId, workspaceId, project.id, title, (maxOrder?.max_order ?? -1) + 1).run();
 
   return {
     text: `✅ Created task in *${project.name}*:\n_${title}_`,
@@ -164,7 +167,8 @@ export async function handleHelp(): Promise<CommandResult> {
       '`/status <project>` — Per-project status',
       '`/tasks` — List pending tasks',
       '`/new <project> <title>` — Create a task',
-      '`/help` — This message',
+      '`/help` — This message\n',
+      '_To re-link your account, just paste a new API key._',
     ].join('\n'),
     parse_mode: 'Markdown',
   };
