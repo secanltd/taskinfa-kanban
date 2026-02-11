@@ -92,7 +92,7 @@ export async function handleTasks(ctx: CommandContext): Promise<CommandResult> {
     `SELECT t.*, tl.name as project_name
      FROM tasks t
      LEFT JOIN task_lists tl ON t.task_list_id = tl.id
-     WHERE t.workspace_id = ? AND t.status IN ('todo', 'in_progress')
+     WHERE t.workspace_id = ? AND t.status IN ('todo', 'in_progress', 'review')
      ORDER BY
        CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
        t.created_at ASC
@@ -106,10 +106,13 @@ export async function handleTasks(ctx: CommandContext): Promise<CommandResult> {
   let text = '*Pending Tasks:*\n\n';
   for (const task of tasks.results) {
     const priorityIcon = task.priority === 'urgent' ? '🔴' : task.priority === 'high' ? '🟠' : task.priority === 'medium' ? '🔵' : '⚪';
-    const statusIcon = task.status === 'in_progress' ? '⚡' : '📝';
+    const statusIcon = task.status === 'review' ? '👀' : task.status === 'in_progress' ? '⚡' : '📝';
     text += `${statusIcon} ${priorityIcon} *${task.title}*`;
     if (task.project_name) text += ` _(${task.project_name})_`;
     text += '\n';
+    if (task.status === 'review' && task.pr_url) {
+      text += `   [View PR](${task.pr_url})\n`;
+    }
   }
 
   return { text, parse_mode: 'Markdown' };

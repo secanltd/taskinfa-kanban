@@ -61,6 +61,8 @@ interface UpdateTaskRequest extends UpdateTaskStatusRequest {
   description?: string;
   priority?: string;
   labels?: string[];
+  pr_url?: string;
+  branch_name?: string;
 }
 
 // PATCH /api/tasks/[id] - Update task
@@ -88,6 +90,8 @@ export async function PATCH(
       description,
       priority,
       labels,
+      pr_url,
+      branch_name,
     } = body;
 
     // Validate status if provided
@@ -180,6 +184,16 @@ export async function PATCH(
     if (assigned_to !== undefined) {
       updates.push('assigned_to = ?');
       updateParams.push(assigned_to || null);
+    }
+
+    if (pr_url !== undefined) {
+      updates.push('pr_url = ?');
+      updateParams.push(pr_url || null);
+    }
+
+    if (branch_name !== undefined) {
+      updates.push('branch_name = ?');
+      updateParams.push(branch_name || null);
     }
 
     updateParams.push(id, auth.workspaceId);

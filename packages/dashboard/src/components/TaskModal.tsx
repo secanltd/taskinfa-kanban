@@ -336,21 +336,30 @@ export default function TaskModal({
             </div>
           )}
 
-          {/* Files Changed (read-only) */}
-          {!isEditing && task.files_changed && task.files_changed.length > 0 && (
+          {/* Pull Request (read-only) */}
+          {!isEditing && task.pr_url && (
             <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-2">Files Changed</label>
-              <div className="bg-terminal-bg rounded-lg p-3 space-y-1 font-mono text-sm">
-                {task.files_changed.map((file, idx) => (
-                  <div key={idx} className="text-terminal-text flex items-center gap-2">
-                    <svg className="w-4 h-4 text-terminal-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    {file}
-                  </div>
-                ))}
-              </div>
+              <label className="block text-sm font-medium text-terminal-muted mb-2">Pull Request</label>
+              <a
+                href={task.pr_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium
+                           bg-terminal-purple/10 text-terminal-purple border border-terminal-purple/20
+                           hover:bg-terminal-purple/20 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
+                </svg>
+                View PR #{task.pr_url.split('/').pop()}
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+              {task.branch_name && (
+                <p className="mt-2 text-xs text-terminal-muted font-mono">Branch: {task.branch_name}</p>
+              )}
             </div>
           )}
 

@@ -29,6 +29,7 @@ const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '900000', 10); // 15
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '3', 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/workspace';
+const GH_TOKEN = process.env.GH_TOKEN || '';
 const LOG_DIR = join(WORKSPACE_ROOT, '.memory');
 const LOG_FILE = join(LOG_DIR, 'orchestrator.log');
 
@@ -91,6 +92,8 @@ interface Task {
   priority: string;
   task_list_id: string | null;
   error_count: number;
+  pr_url: string | null;
+  branch_name: string | null;
 }
 
 interface TaskList {
@@ -135,10 +138,35 @@ async function getProjectInfo(projectId: string): Promise<TaskList | null> {
   }
 }
 
+function generateBranchName(task: Task): string {
+  const taskIdShort = task.id.replace('task_', '').slice(0, 8);
+  const titleSlug = task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  return `task/${taskIdShort}/${titleSlug}`;
+}
+
 function buildSystemPrompt(task: Task, project: TaskList | null): string {
   const workDir = project?.working_directory || WORKSPACE_ROOT;
   const memoryPath = join(workDir, '.memory', 'context.md');
   const claudeMdPath = join(workDir, 'CLAUDE.md');
+  const branchName = generateBranchName(task);
+
+  const gitWorkflow = GH_TOKEN ? `
+## Git Workflow
+
+After completing the task, create a PR for review:
+1. Create branch: git checkout -b ${branchName}
+2. Stage and commit your changes (use conventional commits, e.g. "feat: ..." or "fix: ...")
+3. Push: git push -u origin ${branchName}
+4. Create PR: gh pr create --title "${task.title}" --body "Automated PR for task ${task.id}"
+5. Capture the PR URL from the gh output, then update the task:
+   curl -s -X PATCH "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID" \\
+     -H "Authorization: Bearer $KANBAN_API_KEY" \\
+     -H "Content-Type: application/json" \\
+     -d '{"pr_url":"<PR_URL>","branch_name":"${branchName}"}'
+   (Replace <PR_URL> with the actual URL returned by gh pr create)
+
+IMPORTANT: You MUST create the branch, commit, push, and create the PR. The PR URL must be saved to the task.
+` : '';
 
   return [
     `Project: ${project?.name || 'Unknown'}`,
@@ -149,6 +177,7 @@ function buildSystemPrompt(task: Task, project: TaskList | null): string {
     task.description || '',
     '',
     'Do the task. When done, update .memory/context.md with what you accomplished.',
+    gitWorkflow,
   ].filter(Boolean).join('\n');
 }
 
@@ -219,6 +248,7 @@ async function startClaudeSession(projectId: string, task: Task): Promise<void> 
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
       KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -359,6 +389,10 @@ async function main() {
   if (!API_KEY) {
     log('ERROR', 'KANBAN_API_KEY not set. Set it and restart.');
     process.exit(1);
+  }
+
+  if (!GH_TOKEN) {
+    log('WARN', 'GH_TOKEN not set. Agents will not be able to create GitHub PRs.');
   }
 
   // Initial poll

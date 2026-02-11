@@ -192,12 +192,16 @@ async function sendTelegramNotification(
   };
 
   let taskInfo = '';
+  let prLink = '';
   if (taskId) {
-    const task = await queryOne<{ title: string }>(db, 'SELECT title FROM tasks WHERE id = ?', [taskId]);
-    if (task) taskInfo = `\nTask: ${task.title}`;
+    const task = await queryOne<{ title: string; pr_url: string | null }>(db, 'SELECT title, pr_url FROM tasks WHERE id = ?', [taskId]);
+    if (task) {
+      taskInfo = `\nTask: ${task.title}`;
+      if (task.pr_url) prLink = `\n[View PR](${task.pr_url})`;
+    }
   }
 
-  const text = `${emoji[eventType] || '\u2139\ufe0f'} *${eventType.replace(/_/g, ' ').toUpperCase()}*${taskInfo}\n${message}`;
+  const text = `${emoji[eventType] || '\u2139\ufe0f'} *${eventType.replace(/_/g, ' ').toUpperCase()}*${taskInfo}\n${message}${prLink}`;
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return;

@@ -45,6 +45,10 @@ export interface Task {
   files_changed: string[]; // JSON array
   completion_notes: string | null;
 
+  // PR integration
+  pr_url: string | null;
+  branch_name: string | null;
+
   // Time tracking
   created_at: string;
   updated_at: string;
