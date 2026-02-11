@@ -82,6 +82,12 @@ export default async function DashboardPage() {
               </span>
               <div className="h-4 w-px bg-terminal-border hidden md:block" />
               <a
+                href="/overview"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+              >
+                Overview
+              </a>
+              <a
                 href="/projects"
                 className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
               >

@@ -1,0 +1,15 @@
+{
+  "name": "@taskinfa/telegram",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:test": "wrangler deploy --env test",
+    "deploy:prod": "wrangler deploy --env production",
+    "build": "echo 'CF Worker — no build step needed'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "wrangler": "^4.60.0"
+  }
+}

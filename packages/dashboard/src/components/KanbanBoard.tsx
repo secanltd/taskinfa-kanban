@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { Task, TaskList, TaskStatus } from '@taskinfa/shared';
-import { useTaskStream, WorkerStatus } from '@/hooks/useTaskStream';
+import type { Task, TaskList, TaskStatus, SessionWithDetails } from '@taskinfa/shared';
+import { useTaskStream } from '@/hooks/useTaskStream';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
-import WorkersModal from './WorkersModal';
+import SessionsPanel from './SessionsPanel';
 import CreateTaskModal from './CreateTaskModal';
 
 interface KanbanBoardProps {
@@ -26,7 +26,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [isWorkersModalOpen, setIsWorkersModalOpen] = useState(false);
+  const [isSessionsPanelOpen, setIsSessionsPanelOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
@@ -42,14 +42,14 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   }, []);
 
   // SSE hook for real-time updates
-  const { workers, connected, onlineCount, workingCount, reconnect } = useTaskStream({
+  const { sessions, sessionStats, connected, onlineCount, workingCount, reconnect } = useTaskStream({
     onTasksUpdated: handleTasksUpdated,
     enabled: true,
   });
 
-  // Helper to get worker working on a task
-  const getWorkerForTask = (taskId: string): WorkerStatus | undefined => {
-    return workers.find(w => w.current_task?.id === taskId);
+  // Helper to get session working on a task
+  const getSessionForTask = (taskId: string): SessionWithDetails | undefined => {
+    return sessions.find(s => s.current_task_id === taskId && s.status === 'active');
   };
 
   const getTasksByStatus = (status: TaskStatus) => {
@@ -162,21 +162,21 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           </div>
         </div>
 
-        {/* Right: Workers + Create */}
+        {/* Right: Sessions + Create */}
         <div className="flex items-center gap-3">
-          {/* Workers Indicator */}
+          {/* Sessions Indicator */}
           <button
-            onClick={() => setIsWorkersModalOpen(true)}
+            onClick={() => setIsSessionsPanelOpen(!isSessionsPanelOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
                        hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors"
           >
-            <span className={`w-2 h-2 rounded-full ${onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
+            <span className={`w-2 h-2 rounded-full ${sessionStats.active > 0 ? 'bg-terminal-blue animate-pulse' : onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
             <span className="text-sm text-terminal-text">
-              {onlineCount} worker{onlineCount !== 1 ? 's' : ''} online
+              {sessionStats.active} session{sessionStats.active !== 1 ? 's' : ''} active
             </span>
-            {workingCount > 0 && (
-              <span className="text-sm text-terminal-muted">
-                ({workingCount} working)
+            {sessionStats.stuck > 0 && (
+              <span className="text-sm text-terminal-amber">
+                ({sessionStats.stuck} stuck)
               </span>
             )}
           </button>
@@ -193,6 +193,18 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           </button>
         </div>
       </div>
+
+      {/* Sessions Panel (collapsible) */}
+      {isSessionsPanelOpen && (
+        <div className="mb-6">
+          <SessionsPanel
+            sessions={sessions}
+            connected={connected}
+            stats={sessionStats}
+            onReconnect={reconnect}
+          />
+        </div>
+      )}
 
       {/* Kanban Board - Full Width with Horizontal Scroll */}
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
@@ -226,17 +238,28 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, column.status)}
               >
-                {columnTasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    worker={getWorkerForTask(task.id)}
-                    isDragging={draggedTask?.id === task.id}
-                    onDragStart={() => handleDragStart(task)}
-                    onClick={() => handleTaskClick(task)}
-                    onEdit={() => handleTaskEdit(task)}
-                  />
-                ))}
+                {columnTasks.map((task) => {
+                  const session = getSessionForTask(task.id);
+                  // Map session to worker-compatible shape for TaskCard
+                  const worker = session ? {
+                    id: session.id,
+                    name: session.project_name || 'Claude',
+                    status: 'working' as const,
+                    current_task: { id: task.id, title: task.title },
+                  } : undefined;
+
+                  return (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      worker={worker}
+                      isDragging={draggedTask?.id === task.id}
+                      onDragStart={() => handleDragStart(task)}
+                      onClick={() => handleTaskClick(task)}
+                      onEdit={() => handleTaskEdit(task)}
+                    />
+                  );
+                })}
 
                 {columnTasks.length === 0 && (
                   <div className={`
@@ -266,17 +289,6 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           editMode={editingTask !== null}
         />
       )}
-
-      {/* Workers Modal */}
-      <WorkersModal
-        isOpen={isWorkersModalOpen}
-        onClose={() => setIsWorkersModalOpen(false)}
-        workers={workers}
-        connected={connected}
-        onlineCount={onlineCount}
-        workingCount={workingCount}
-        onReconnect={reconnect}
-      />
 
       {/* Create Task Modal */}
       <CreateTaskModal

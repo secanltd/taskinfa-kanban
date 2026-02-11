@@ -20,6 +20,8 @@ export interface TaskList {
   description: string | null;
   repository_url: string | null;
   working_directory: string;
+  slug: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +108,122 @@ export interface WorkerWithTask extends Worker {
     title: string | null;
   } | null;
   last_seen: string;
+}
+
+// V2 Session types (replaces Docker workers)
+
+export type SessionStatus = 'active' | 'idle' | 'stuck' | 'completed' | 'error';
+
+export type SessionEventType =
+  | 'task_claimed'
+  | 'task_progress'
+  | 'task_completed'
+  | 'stuck'
+  | 'needs_input'
+  | 'error'
+  | 'session_start'
+  | 'session_end'
+  | 'notification';
+
+export interface Session {
+  id: string;
+  workspace_id: string;
+  project_id: string | null;
+  current_task_id: string | null;
+  status: SessionStatus;
+  started_at: string;
+  last_event_at: string | null;
+  summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionWithDetails extends Session {
+  project_name?: string | null;
+  current_task_title?: string | null;
+}
+
+export interface SessionEvent {
+  id: string;
+  session_id: string | null;
+  task_id: string | null;
+  event_type: SessionEventType;
+  message: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface NotificationConfig {
+  id: string;
+  workspace_id: string;
+  telegram_chat_id: string | null;
+  telegram_enabled: boolean;
+  notify_on_complete: boolean;
+  notify_on_stuck: boolean;
+  notify_on_error: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// V2 API request/response types
+
+export interface CreateSessionRequest {
+  workspace_id?: string;
+  project_id?: string;
+  current_task_id?: string;
+  status?: SessionStatus;
+  summary?: string;
+}
+
+export interface CreateSessionResponse {
+  session: Session;
+}
+
+export interface UpdateSessionRequest {
+  status?: SessionStatus;
+  current_task_id?: string | null;
+  summary?: string;
+  last_event_at?: string;
+}
+
+export interface UpdateSessionResponse {
+  session: Session;
+}
+
+export interface ListSessionsResponse {
+  sessions: SessionWithDetails[];
+  stats: {
+    active: number;
+    idle: number;
+    stuck: number;
+    completed: number;
+    error: number;
+  };
+}
+
+export interface CreateEventRequest {
+  session_id?: string;
+  task_id?: string;
+  event_type: SessionEventType;
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateEventResponse {
+  event: SessionEvent;
+}
+
+export interface ListEventsResponse {
+  events: SessionEvent[];
+  total: number;
+}
+
+export interface UpdateNotificationConfigRequest {
+  telegram_chat_id?: string;
+  telegram_enabled?: boolean;
+  notify_on_complete?: boolean;
+  notify_on_stuck?: boolean;
+  notify_on_error?: boolean;
 }
 
 // API request/response types

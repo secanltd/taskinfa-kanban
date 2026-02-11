@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "notification": [
+      {
+        "command": "if [ -n \"$KANBAN_API_URL\" ] && [ -n \"$KANBAN_API_KEY\" ]; then curl -s -X POST \"$KANBAN_API_URL/api/events\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer $KANBAN_API_KEY\" -d \"{\\\"event_type\\\": \\\"notification\\\", \\\"session_id\\\": \\\"$KANBAN_SESSION_ID\\\", \\\"task_id\\\": \\\"$KANBAN_TASK_ID\\\", \\\"message\\\": $(echo \"$CLAUDE_NOTIFICATION\" | jq -Rs .)}\"; fi"
+      }
+    ]
+  }
+}

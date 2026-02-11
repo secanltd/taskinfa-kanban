@@ -1,0 +1,28 @@
+name = "taskinfa-telegram"
+main = "src/index.ts"
+compatibility_date = "2026-01-16"
+compatibility_flags = ["nodejs_compat"]
+
+# Shares the same D1 database as the dashboard
+[[d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-db"
+database_id = "e2f4e8ae-71a3-4234-8db1-3abda4a4438d"
+
+# ─── Test Environment ───
+[env.test]
+name = "taskinfa-telegram-test"
+
+[[env.test.d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-test-db"
+database_id = "9cb1ec07-b3ad-43a6-9795-644041818682"
+
+# ─── Production Environment ───
+[env.production]
+name = "taskinfa-telegram-prod"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "taskinfa-kanban-prod-db"
+database_id = "5ee95f43-c3a7-4d44-9d7f-12cb878b49c9"

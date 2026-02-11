@@ -1,8 +1,8 @@
 {
   "name": "taskinfa-kanban",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Autonomous task automation system integrating kanban dashboard with Claude Code",
+  "description": "Autonomous task automation system — kanban dashboard + Telegram bot + Claude Code orchestration",
   "author": "SECAN",
   "license": "MIT",
   "workspaces": [
@@ -14,20 +14,12 @@
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
     "dashboard:dev": "npm run dev --workspace=packages/dashboard",
-    "bot:run": "npm run start --workspace=packages/bot",
-    "docker:setup": "./scripts/docker-manage.sh setup",
-    "docker:up": "./scripts/docker-manage.sh up",
-    "docker:down": "./scripts/docker-manage.sh down",
-    "docker:restart": "./scripts/docker-manage.sh restart",
-    "docker:logs": "./scripts/docker-manage.sh logs",
-    "docker:status": "./scripts/docker-manage.sh status",
-    "docker:build": "./scripts/docker-manage.sh build",
-    "docker:shell": "./scripts/docker-manage.sh shell",
-    "docker:clean": "./scripts/docker-manage.sh clean",
-    "docker:help": "./scripts/docker-manage.sh help"
+    "telegram:dev": "npm run dev --workspace=packages/telegram",
+    "orchestrator": "npx tsx scripts/orchestrator.ts"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
+    "tsx": "^4.7.0",
     "typescript": "^5.7.2"
   },
   "engines": {
