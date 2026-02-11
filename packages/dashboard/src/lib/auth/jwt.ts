@@ -48,6 +48,9 @@ export async function generateApiKey(
   // Hash the key for storage
   const keyHash = await hashKey(apiKey);
 
+  // Build preview: first 8 + last 4 chars of the actual key
+  const keyPreview = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`;
+
   // Calculate expiration date
   const expiresAt = expiresInDays
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
@@ -56,8 +59,8 @@ export async function generateApiKey(
   // Store in database with user_id
   await execute(
     db,
-    `INSERT INTO api_keys (id, workspace_id, user_id, key_hash, name, expires_at, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    [keyId, workspaceId, userId || null, keyHash, name, expiresAt]
+    `INSERT INTO api_keys (id, workspace_id, user_id, key_hash, key_preview, name, expires_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [keyId, workspaceId, userId || null, keyHash, keyPreview, name, expiresAt]
   );
 
   return { key: apiKey, id: keyId };
