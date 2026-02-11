@@ -22,21 +22,21 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     // Fetch user's active API keys
-    const keys = await query<ApiKey>(
+    const keys = await query<ApiKey & { key_preview?: string }>(
       db,
-      `SELECT id, name, key_hash, last_used_at, created_at, expires_at, is_active
+      `SELECT id, name, key_hash, key_preview, last_used_at, created_at, expires_at, is_active
        FROM api_keys
        WHERE user_id = ? AND is_active = 1
        ORDER BY created_at DESC`,
       [session.userId]
     );
 
-    // Format response with key previews (show first 8 + last 4 chars of hash)
+    // Format response with key previews
     const response: ListApiKeysResponse = {
       keys: keys.map((key) => ({
         id: key.id,
         name: key.name,
-        key_preview: `tk_${key.key_hash.substring(0, 6)}...${key.key_hash.substring(key.key_hash.length - 4)}`,
+        key_preview: key.key_preview || `tk_${key.key_hash.substring(0, 6)}...`,
         last_used_at: key.last_used_at,
         created_at: key.created_at,
         expires_at: key.expires_at,
