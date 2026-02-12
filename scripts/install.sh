@@ -1,430 +1,637 @@
 #!/bin/bash
-
-# Taskinfa Worker - One-Click Installer
-# Sets up a complete Taskinfa worker environment for new users
+# Taskinfa Orchestrator Installer
+# One-liner: curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh | bash
 
 set -e
 
-# Detect if script is being piped from curl
-# If so, download it and re-run interactively
-# But only if we're not already running from a temp file (prevent infinite loop)
+# Re-run interactively if piped from curl
 if [ ! -t 0 ] && [[ "$0" != *taskinfa-install* ]]; then
-    echo "Detected non-interactive mode (piped from curl)."
-    echo "Downloading installer for interactive execution..."
-    echo
-
-    # Use mktemp with -t flag for better cross-platform compatibility
     TEMP_SCRIPT=$(mktemp -t taskinfa-install.XXXXXX)
-
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh -o "$TEMP_SCRIPT"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$TEMP_SCRIPT" https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh
-    else
-        echo "Error: Neither curl nor wget found. Cannot download installer."
-        exit 1
-    fi
-
+    curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/install.sh -o "$TEMP_SCRIPT"
     chmod +x "$TEMP_SCRIPT"
-    echo "Running installer interactively..."
-    echo
-
-    # Re-run with terminal input explicitly connected
     exec bash "$TEMP_SCRIPT" </dev/tty
 fi
 
-# Colors for output
+# ── Colors ──────────────────────────────────────────────────────────
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+BOLD='\033[1m'
+NC='\033[0m'
 
-# Banner
-echo -e "${BLUE}"
-echo "╔════════════════════════════════════════════════════════════════════╗"
-echo "║                    TASKINFA WORKER INSTALLER                        ║"
-echo "║            Autonomous Task Automation with Claude Code             ║"
-echo "╚════════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+ok()   { echo -e "${GREEN}[ok]${NC} $1"; }
+err()  { echo -e "${RED}[error]${NC} $1"; }
+warn() { echo -e "${YELLOW}[warn]${NC} $1"; }
+info() { echo -e "${BLUE}[info]${NC} $1"; }
+
+has() { command -v "$1" >/dev/null 2>&1; }
+
+# ── Banner ──────────────────────────────────────────────────────────
+
+echo
+echo -e "${BOLD}Taskinfa Orchestrator Installer${NC}"
+echo "────────────────────────────────────────"
 echo
 
-# Function to print colored messages
-print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
+# ── Step 1: Prerequisites ──────────────────────────────────────────
 
-print_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-}
-
-print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-}
-
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Function to install Claude Code CLI
-install_claude_code() {
-    print_info "Installing Claude Code CLI..."
-    if command_exists curl; then
-        curl -fsSL https://claude.sh/install.sh | bash
-    elif command_exists wget; then
-        wget -qO- https://claude.sh/install.sh | bash
-    else
-        print_error "Neither curl nor wget found. Please install one of them first."
-        exit 1
-    fi
-
-    # Add to PATH for current session
-    export PATH="$HOME/.claude/bin:$PATH"
-
-    print_success "Claude Code CLI installed"
-}
-
-# Function to install Docker (basic guidance)
-install_docker_guidance() {
-    echo
-    print_warning "Docker is not installed on your system."
-    echo
-    echo "Please install Docker from: https://docs.docker.com/get-docker/"
-    echo
-    echo "Installation guides:"
-    echo "  • macOS: https://docs.docker.com/desktop/mac/install/"
-    echo "  • Windows: https://docs.docker.com/desktop/windows/install/"
-    echo "  • Linux: https://docs.docker.com/engine/install/"
-    echo
-    read -p "Press Enter after installing Docker to continue..."
-}
-
-# Function to authenticate with Claude
-authenticate_claude() {
-    print_info "Authenticating with Claude..."
-    echo
-    echo "You'll be redirected to authenticate with Claude in your browser."
-    echo "After authenticating, return here to continue."
-    echo
-    read -p "Press Enter to open authentication page..."
-
-    # Close stdin to prevent installer script from being passed to claude
-    claude login </dev/null
-
-    if [ $? -eq 0 ]; then
-        print_success "Claude authentication successful"
-    else
-        print_error "Claude authentication failed"
-        exit 1
-    fi
-}
-
-# Main installation flow
-echo "Step 1: Checking prerequisites..."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "${BOLD}Step 1: Checking prerequisites${NC}"
 echo
 
-# Check Claude Code CLI
-if command_exists claude; then
-    print_success "Claude Code CLI is installed"
-    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
-    echo "  Version: $CLAUDE_VERSION"
+MISSING=0
+
+# Node.js 18+
+if has node; then
+    NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
+    if [ "$NODE_VER" -ge 18 ]; then
+        ok "Node.js $(node -v)"
+    else
+        err "Node.js $(node -v) — version 18+ required"
+        MISSING=1
+    fi
 else
-    print_warning "Claude Code CLI not found"
-    read -p "Install Claude Code CLI? [Y/n] " -n 1 -r
+    err "Node.js not found — install from https://nodejs.org"
+    MISSING=1
+fi
+
+# Claude CLI
+if has claude; then
+    ok "Claude CLI installed"
+else
+    warn "Claude CLI not found — install from https://claude.ai/download"
+    echo "  The orchestrator spawns Claude Code sessions, so it must be installed."
+    MISSING=1
+fi
+
+# gh CLI or GH_TOKEN
+if has gh; then
+    ok "GitHub CLI installed"
+elif [ -n "$GH_TOKEN" ]; then
+    ok "GH_TOKEN set"
+else
+    warn "Neither gh CLI nor GH_TOKEN found"
+    echo "  Required for agents to create PRs on private repos."
+fi
+
+if [ "$MISSING" -eq 1 ]; then
     echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        install_claude_code
-    else
-        print_error "Claude Code CLI is required. Exiting."
-        exit 1
-    fi
+    err "Missing prerequisites. Install them and re-run."
+    exit 1
 fi
 
 echo
 
-# Check Docker
-if command_exists docker; then
-    print_success "Docker is installed"
-    DOCKER_VERSION=$(docker --version 2>/dev/null || echo "unknown")
-    echo "  Version: $DOCKER_VERSION"
+# ── Step 2: Paths ──────────────────────────────────────────────────
 
-    # Check if Docker daemon is running
-    if docker info >/dev/null 2>&1; then
-        print_success "Docker daemon is running"
-    else
-        print_warning "Docker daemon is not running"
-        echo "  Please start Docker and try again."
-        exit 1
-    fi
-else
-    install_docker_guidance
-
-    # Check again
-    if ! command_exists docker; then
-        print_error "Docker is required but not installed. Exiting."
-        exit 1
-    fi
-fi
-
+echo -e "${BOLD}Step 2: Choose install paths${NC}"
 echo
 
-# Check Claude authentication
-print_info "Checking Claude authentication..."
+DEFAULT_HOME="$PWD/.taskinfa-kanban"
+DEFAULT_PROJECTS="$PWD/taskinfa-projects"
 
-# Test if Claude can run a simple command (better than just checking for files)
-if claude --version >/dev/null 2>&1; then
-    print_success "Claude Code CLI is working"
+read -p "Install directory [$DEFAULT_HOME]: " TASKINFA_HOME
+TASKINFA_HOME="${TASKINFA_HOME:-$DEFAULT_HOME}"
 
-    # Try a test command to verify authentication
-    # Claude Code doesn't require explicit login check - if it works, it's authenticated
-    print_success "Claude is authenticated and ready"
-else
-    print_warning "Claude Code CLI test failed"
-    authenticate_claude
-fi
+read -p "Projects directory [$DEFAULT_PROJECTS]: " PROJECTS_DIR
+PROJECTS_DIR="${PROJECTS_DIR:-$DEFAULT_PROJECTS}"
 
 echo
-echo "Step 2: Taskinfa Dashboard Setup"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo
-echo -e "${YELLOW}Before continuing, you need to set up your Taskinfa account:${NC}"
-echo
-echo -e "  1. Go to: ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev${NC}"
-echo "  2. Create an account (or log in if you have one)"
-echo -e "  3. Go to the ${BLUE}Projects${NC} page and create a new project"
-echo -e "     Note the ${BLUE}Project ID${NC} (e.g., 'my-first-project')"
-echo -e "  4. Go to ${BLUE}Settings${NC} page"
-echo -e "     Note your ${BLUE}Workspace ID${NC} (e.g., 'JygVRBYxD7dJS5fjdG2gM')"
-echo -e "  5. Go to ${BLUE}Settings${NC} → ${BLUE}API Keys${NC}"
-echo "     Create a new API key and copy it (shown only once!)"
-echo
-echo -e "${YELLOW}Come back here when you have:${NC}"
-echo "  • Your API key"
-echo "  • Your Workspace ID"
-echo "  • Your Project ID"
-echo
-read -p "Press Enter when ready to continue..."
-
-echo
-echo "Step 3: Worker Configuration"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+ok "Install directory: $TASKINFA_HOME"
+ok "Projects directory: $PROJECTS_DIR"
 echo
 
-# Get API key
+# ── Step 3: Credentials ───────────────────────────────────────────
+
+echo -e "${BOLD}Step 3: Credentials${NC}"
+echo
+
+# API Key
 while true; do
-    read -p "Enter your Taskinfa API key: " API_KEY
-    if [ -z "$API_KEY" ]; then
-        print_error "API key cannot be empty"
+    read -p "Taskinfa API key (tk_...): " KANBAN_API_KEY
+    if [ -z "$KANBAN_API_KEY" ]; then
+        err "API key is required"
     else
         break
     fi
 done
 
-# Get Project ID
-while true; do
-    read -p "Enter your Project ID (e.g., my-first-project): " PROJECT_ID
-    if [ -z "$PROJECT_ID" ]; then
-        print_error "Project ID cannot be empty"
-    else
-        break
+# Dashboard URL
+DEFAULT_URL="https://kanban.taskinfa.com"
+read -p "Dashboard URL [$DEFAULT_URL]: " KANBAN_API_URL
+KANBAN_API_URL="${KANBAN_API_URL:-$DEFAULT_URL}"
+
+# GitHub token
+GH_TOKEN_VAL=""
+if has gh; then
+    GH_TOKEN_VAL=$(gh auth token 2>/dev/null || true)
+    if [ -n "$GH_TOKEN_VAL" ]; then
+        ok "GitHub token auto-detected from gh CLI"
     fi
-done
-
-# Get Worker Name
-read -p "Enter worker name [Worker-1]: " WORKER_NAME
-WORKER_NAME=${WORKER_NAME:-Worker-1}
-
-# Get Workspace ID
-echo
-echo -e "${YELLOW}Workspace ID:${NC}"
-echo "Find your Workspace ID in the Taskinfa dashboard at:"
-echo -e "${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev/settings${NC}"
-echo "It's shown in the 'Workspace' section (e.g., 'JygVRBYxD7dJS5fjdG2gM')"
-echo
-read -p "Enter your Workspace ID: " WORKSPACE_ID
-
-# Validate workspace ID is not empty
-while [ -z "$WORKSPACE_ID" ]; do
-    print_error "Workspace ID cannot be empty"
-    echo "Please enter your Workspace ID from the Settings page:"
-    read -p "Enter your Workspace ID: " WORKSPACE_ID
-done
-
-# Get GitHub Token (optional, for private repos)
-echo
-echo -e "${YELLOW}GitHub Access (Optional)${NC}"
-echo "If your project uses a private GitHub repository, you'll need to provide a Personal Access Token."
-echo "You can skip this if your repository is public."
-echo
-echo "To create a token:"
-echo -e "  1. Go to: ${BLUE}https://github.com/settings/tokens${NC}"
-echo "  2. Click 'Generate new token (classic)'"
-echo -e "  3. Select scopes: ${BLUE}repo${NC} (for private repos)"
-echo "  4. Copy the token"
-echo
-read -p "Enter GitHub Personal Access Token (leave empty to skip): " GITHUB_TOKEN
-
-echo
-print_success "Configuration collected"
-echo "  Workspace ID: $WORKSPACE_ID"
-echo "  Project ID: $PROJECT_ID"
-echo "  Worker Name: $WORKER_NAME"
-echo "  API Key: ${API_KEY:0:20}..."
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo "  GitHub Token: ${GITHUB_TOKEN:0:10}... (configured)"
-else
-    echo "  GitHub Token: (not configured - public repos only)"
+fi
+if [ -z "$GH_TOKEN_VAL" ]; then
+    read -p "GitHub token (for private repos, leave empty to skip): " GH_TOKEN_VAL
 fi
 
 echo
-echo "Step 4: Setting up worker environment"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ── Step 4: Settings ──────────────────────────────────────────────
+
+echo -e "${BOLD}Step 4: Settings${NC}"
 echo
 
-# Create working directory
-WORKER_DIR="$HOME/.taskinfa/workers/$PROJECT_ID"
-mkdir -p "$WORKER_DIR"
-mkdir -p "$WORKER_DIR/workspace"
-mkdir -p "$WORKER_DIR/logs"
+read -p "Max concurrent sessions [3]: " MAX_CONCURRENT
+MAX_CONCURRENT="${MAX_CONCURRENT:-3}"
 
-print_success "Created worker directory: $WORKER_DIR"
+read -p "Poll interval in minutes [15]: " POLL_MINUTES
+POLL_MINUTES="${POLL_MINUTES:-15}"
+POLL_INTERVAL=$(( POLL_MINUTES * 60 * 1000 ))
 
-# Create .env file
-cat > "$WORKER_DIR/.env" << EOF
-WORKSPACE_ID=$WORKSPACE_ID
-TASK_LIST_ID=$PROJECT_ID
-WORKER_NAME=$WORKER_NAME
-POLL_INTERVAL=30
-TASKINFA_API_KEY=$API_KEY
-TASKINFA_API_URL=https://kanban.taskinfa.com/api
-GITHUB_TOKEN=$GITHUB_TOKEN
+echo
+
+# ── Step 5: Telegram (optional) ──────────────────────────────────
+
+echo -e "${BOLD}Step 5: Telegram notifications (optional)${NC}"
+echo
+
+read -p "Telegram bot token (leave empty to skip): " TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=""
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    read -p "Telegram chat ID: " TELEGRAM_CHAT_ID
+fi
+
+echo
+
+# ── Step 6: Create directory structure ─────────────────────────────
+
+echo -e "${BOLD}Step 6: Installing${NC}"
+echo
+
+mkdir -p "$TASKINFA_HOME/bin"
+mkdir -p "$TASKINFA_HOME/logs"
+mkdir -p "$TASKINFA_HOME/state"
+mkdir -p "$PROJECTS_DIR"
+
+ok "Created directory structure"
+
+# ── Download orchestrator ──────────────────────────────────────────
+
+info "Downloading orchestrator..."
+DOWNLOAD_URL="https://github.com/secanltd/taskinfa-kanban/releases/latest/download/orchestrator.js"
+if curl -fsSL "$DOWNLOAD_URL" -o "$TASKINFA_HOME/orchestrator.js" 2>/dev/null; then
+    ok "Downloaded orchestrator.js"
+else
+    warn "Could not download from GitHub Releases."
+    echo "  You can manually place orchestrator.js in $TASKINFA_HOME/"
+    echo "  Build it with: npm run build:orchestrator (in the taskinfa-kanban repo)"
+fi
+
+# ── Write config.env ───────────────────────────────────────────────
+
+cat > "$TASKINFA_HOME/config.env" << EOF
+# Taskinfa Orchestrator Configuration
+# Generated by install.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+TASKINFA_HOME=$TASKINFA_HOME
+PROJECTS_DIR=$PROJECTS_DIR
+KANBAN_API_URL=$KANBAN_API_URL
+KANBAN_API_KEY=$KANBAN_API_KEY
+GH_TOKEN=$GH_TOKEN_VAL
+POLL_INTERVAL=$POLL_INTERVAL
+MAX_CONCURRENT=$MAX_CONCURRENT
+MAX_RETRIES=3
 EOF
 
-print_success "Created configuration file"
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    cat >> "$TASKINFA_HOME/config.env" << EOF
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
+EOF
+fi
 
-# Download worker script
-print_info "Downloading worker script..."
-curl -fsSL https://raw.githubusercontent.com/secanltd/taskinfa-kanban/main/scripts/worker/taskinfa-worker-loop.sh \
-    > "$WORKER_DIR/worker.sh" 2>/dev/null || {
-    print_warning "Failed to download from GitHub, using local copy"
-    # Create a basic worker script
-    cat > "$WORKER_DIR/worker.sh" << 'EOFSCRIPT'
+chmod 600 "$TASKINFA_HOME/config.env"
+ok "Wrote config.env"
+
+# ── Create CLI script ─────────────────────────────────────────────
+
+cat > "$TASKINFA_HOME/bin/taskinfa" << 'EOFCLI'
 #!/bin/bash
-set -euo pipefail
+# Taskinfa CLI — manage the orchestrator daemon
 
-# Load environment
-source "$(dirname "$0")/.env"
+set -e
 
-echo "🚀 Taskinfa Worker starting..."
-echo "   Project: ${TASK_LIST_ID}"
-echo "   Worker: ${WORKER_NAME}"
-echo
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TASKINFA_HOME="$(dirname "$SCRIPT_DIR")"
+CONFIG="$TASKINFA_HOME/config.env"
+PID_FILE="$TASKINFA_HOME/state/orchestrator.pid"
+LOG_FILE="$TASKINFA_HOME/logs/orchestrator.log"
+ORCH="$TASKINFA_HOME/orchestrator.js"
 
-SKILL_PROMPT="
-You are an autonomous task worker for the Taskinfa project '${TASK_LIST_ID}'.
+if [ ! -f "$CONFIG" ]; then
+    echo "Error: config.env not found at $CONFIG"
+    exit 1
+fi
 
-Use the taskinfa-kanban skill to:
-1. Fetch tasks from the API using the provided API key
-2. Execute tasks autonomously
-3. Update task status when complete
-
-Your API key is: ${TASKINFA_API_KEY}
-API endpoint: ${TASKINFA_API_URL}
-
-Begin by fetching the next task for project '${TASK_LIST_ID}'.
-"
-
-while true; do
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Checking for tasks..."
-
-    # Simplified version - just prompt for now
-    echo "$SKILL_PROMPT"
-
-    echo "   Waiting ${POLL_INTERVAL}s before next check..."
-    sleep ${POLL_INTERVAL}
-done
-EOFSCRIPT
+# Source config for API calls
+load_config() {
+    set -a
+    source "$CONFIG"
+    set +a
 }
 
-chmod +x "$WORKER_DIR/worker.sh"
+is_running() {
+    [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
 
-print_success "Worker script ready"
+cmd_start() {
+    if is_running; then
+        echo "Orchestrator already running (PID $(cat "$PID_FILE"))"
+        return 0
+    fi
+    if [ ! -f "$ORCH" ]; then
+        echo "Error: orchestrator.js not found at $ORCH"
+        echo "Run: taskinfa update"
+        exit 1
+    fi
+    load_config
+    export TASKINFA_CONFIG="$CONFIG"
+    nohup node "$ORCH" >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "Orchestrator started (PID $!)"
+    echo "Logs: $LOG_FILE"
+}
 
-# Create start/stop scripts
-cat > "$WORKER_DIR/start.sh" << 'EOFSTART'
-#!/bin/bash
-cd "$(dirname "$0")"
-./worker.sh > logs/worker.log 2>&1 &
-echo $! > worker.pid
-echo "Worker started with PID: $(cat worker.pid)"
-echo "View logs: tail -f logs/worker.log"
-EOFSTART
+cmd_stop() {
+    if ! is_running; then
+        echo "Orchestrator is not running"
+        rm -f "$PID_FILE"
+        return 0
+    fi
+    local pid
+    pid=$(cat "$PID_FILE")
+    kill "$pid"
+    rm -f "$PID_FILE"
+    echo "Orchestrator stopped (PID $pid)"
+}
 
-cat > "$WORKER_DIR/stop.sh" << 'EOFSTOP'
-#!/bin/bash
-cd "$(dirname "$0")"
-if [ -f worker.pid ]; then
-    kill $(cat worker.pid) 2>/dev/null || true
-    rm worker.pid
-    echo "Worker stopped"
-else
-    echo "Worker not running"
+cmd_restart() {
+    cmd_stop
+    sleep 1
+    cmd_start
+}
+
+cmd_status() {
+    if is_running; then
+        echo "Orchestrator is running (PID $(cat "$PID_FILE"))"
+    else
+        echo "Orchestrator is not running"
+        rm -f "$PID_FILE" 2>/dev/null
+    fi
+    echo
+    echo "Last 5 log lines:"
+    tail -5 "$LOG_FILE" 2>/dev/null || echo "  (no logs yet)"
+}
+
+cmd_logs() {
+    tail -f "$LOG_FILE"
+}
+
+cmd_doctor() {
+    echo "Taskinfa Doctor"
+    echo "───────────────"
+    echo
+
+    # Node.js
+    if command -v node >/dev/null 2>&1; then
+        local nv
+        nv=$(node -v | sed 's/v//' | cut -d. -f1)
+        if [ "$nv" -ge 18 ]; then
+            echo "[ok] Node.js $(node -v)"
+        else
+            echo "[!!] Node.js $(node -v) — need 18+"
+        fi
+    else
+        echo "[!!] Node.js not found"
+    fi
+
+    # Claude CLI
+    if command -v claude >/dev/null 2>&1; then
+        echo "[ok] Claude CLI installed"
+    else
+        echo "[!!] Claude CLI not found"
+    fi
+
+    # gh CLI
+    if command -v gh >/dev/null 2>&1; then
+        if gh auth status >/dev/null 2>&1; then
+            echo "[ok] GitHub CLI authenticated"
+        else
+            echo "[!!] GitHub CLI installed but not authenticated"
+        fi
+    else
+        echo "[--] GitHub CLI not installed (optional if GH_TOKEN is set)"
+    fi
+
+    # Config
+    if [ -f "$CONFIG" ]; then
+        echo "[ok] config.env exists"
+    else
+        echo "[!!] config.env missing"
+    fi
+
+    # Orchestrator binary
+    if [ -f "$ORCH" ]; then
+        echo "[ok] orchestrator.js present"
+    else
+        echo "[!!] orchestrator.js missing — run: taskinfa update"
+    fi
+
+    # Projects dir
+    load_config 2>/dev/null
+    if [ -d "$PROJECTS_DIR" ]; then
+        local count
+        count=$(ls -1 "$PROJECTS_DIR" 2>/dev/null | wc -l | tr -d ' ')
+        echo "[ok] Projects directory exists ($count projects)"
+    else
+        echo "[!!] Projects directory missing: $PROJECTS_DIR"
+    fi
+
+    # API reachable
+    if [ -n "$KANBAN_API_URL" ] && [ -n "$KANBAN_API_KEY" ]; then
+        local status
+        status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $KANBAN_API_KEY" \
+            "$KANBAN_API_URL/api/tasks?limit=1" 2>/dev/null || echo "000")
+        if [ "$status" = "200" ]; then
+            echo "[ok] API reachable ($KANBAN_API_URL)"
+        else
+            echo "[!!] API returned HTTP $status ($KANBAN_API_URL)"
+        fi
+    else
+        echo "[!!] API URL or key not configured"
+    fi
+
+    # Running?
+    echo
+    if is_running; then
+        echo "Status: running (PID $(cat "$PID_FILE"))"
+    else
+        echo "Status: stopped"
+    fi
+}
+
+cmd_update() {
+    echo "Downloading latest orchestrator..."
+    local url="https://github.com/secanltd/taskinfa-kanban/releases/latest/download/orchestrator.js"
+    if curl -fsSL "$url" -o "$ORCH.tmp"; then
+        mv "$ORCH.tmp" "$ORCH"
+        echo "Updated orchestrator.js"
+        echo "Restart with: taskinfa restart"
+    else
+        rm -f "$ORCH.tmp"
+        echo "Error: download failed"
+        exit 1
+    fi
+}
+
+cmd_auth() {
+    load_config
+    echo "Current settings:"
+    echo "  API URL: $KANBAN_API_URL"
+    echo "  API Key: ${KANBAN_API_KEY:0:20}..."
+    [ -n "$GH_TOKEN" ] && echo "  GH Token: ${GH_TOKEN:0:10}..."
+    echo
+    echo "What would you like to update?"
+    echo "  1) API key"
+    echo "  2) Dashboard URL"
+    echo "  3) GitHub token"
+    echo "  4) Cancel"
+    read -p "Choice [4]: " choice
+    choice="${choice:-4}"
+    case "$choice" in
+        1)
+            read -p "New API key: " new_key
+            sed -i "s|^KANBAN_API_KEY=.*|KANBAN_API_KEY=$new_key|" "$CONFIG"
+            echo "Updated API key"
+            ;;
+        2)
+            read -p "New dashboard URL: " new_url
+            sed -i "s|^KANBAN_API_URL=.*|KANBAN_API_URL=$new_url|" "$CONFIG"
+            echo "Updated dashboard URL"
+            ;;
+        3)
+            read -p "New GitHub token: " new_token
+            if grep -q "^GH_TOKEN=" "$CONFIG"; then
+                sed -i "s|^GH_TOKEN=.*|GH_TOKEN=$new_token|" "$CONFIG"
+            else
+                echo "GH_TOKEN=$new_token" >> "$CONFIG"
+            fi
+            echo "Updated GitHub token"
+            ;;
+        *)
+            echo "Cancelled"
+            ;;
+    esac
+}
+
+cmd_projects() {
+    load_config
+    echo "Fetching projects..."
+    local response
+    response=$(curl -s -H "Authorization: Bearer $KANBAN_API_KEY" \
+        "$KANBAN_API_URL/api/task-lists" 2>/dev/null)
+
+    if [ $? -ne 0 ] || [ -z "$response" ]; then
+        echo "Error: could not reach API"
+        exit 1
+    fi
+
+    echo
+    echo "Projects:"
+    echo "─────────"
+    # Parse JSON with node (available since we require Node.js 18+)
+    echo "$response" | node -e "
+        const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+        const lists = data.task_lists || [];
+        if (!lists.length) { console.log('  (no projects)'); process.exit(0); }
+        for (const p of lists) {
+            const init = p.is_initialized ? 'yes' : 'no';
+            const repo = p.repository_url || '(none)';
+            console.log('  ' + p.id);
+            console.log('    Name: ' + p.name);
+            console.log('    Repo: ' + repo);
+            console.log('    Initialized: ' + init);
+            console.log();
+        }
+    "
+}
+
+cmd_init() {
+    load_config
+    local target_id="$1"
+
+    if [ -z "$target_id" ]; then
+        echo "Initializing all uninitialized projects..."
+    else
+        echo "Initializing project $target_id..."
+    fi
+
+    local response
+    response=$(curl -s -H "Authorization: Bearer $KANBAN_API_KEY" \
+        "$KANBAN_API_URL/api/task-lists" 2>/dev/null)
+
+    echo "$response" | node -e "
+        const fs = require('fs');
+        const { execSync } = require('child_process');
+        const data = JSON.parse(fs.readFileSync('/dev/stdin','utf8'));
+        const lists = data.task_lists || [];
+        const targetId = process.argv[1] || '';
+        const projectsDir = process.argv[2];
+        const apiUrl = process.argv[3];
+        const apiKey = process.argv[4];
+        const ghToken = process.argv[5] || '';
+
+        for (const p of lists) {
+            if (targetId && p.id !== targetId) continue;
+            if (p.is_initialized) { console.log('  ' + p.id + ': already initialized'); continue; }
+            if (!p.repository_url) { console.log('  ' + p.id + ': no repository URL'); continue; }
+
+            const dir = projectsDir + '/' + p.id;
+            if (fs.existsSync(dir)) {
+                console.log('  ' + p.id + ': directory exists, marking initialized');
+            } else {
+                console.log('  ' + p.id + ': cloning ' + p.repository_url);
+                let cloneUrl = p.repository_url;
+                if (ghToken && cloneUrl.startsWith('https://github.com/')) {
+                    cloneUrl = cloneUrl.replace('https://github.com/', 'https://' + ghToken + '@github.com/');
+                }
+                try {
+                    execSync('git clone ' + JSON.stringify(cloneUrl) + ' ' + JSON.stringify(dir), { stdio: 'inherit' });
+                } catch (e) {
+                    console.error('  ' + p.id + ': clone failed');
+                    continue;
+                }
+            }
+
+            // Mark initialized via API
+            try {
+                execSync('curl -s -X PATCH ' +
+                    '-H \"Authorization: Bearer ' + apiKey + '\" ' +
+                    '-H \"Content-Type: application/json\" ' +
+                    '-d ' + JSON.stringify(JSON.stringify({ working_directory: dir, is_initialized: true })) + ' ' +
+                    JSON.stringify(apiUrl + '/api/task-lists/' + p.id),
+                    { stdio: 'pipe' });
+                console.log('  ' + p.id + ': initialized');
+            } catch (e) {
+                console.error('  ' + p.id + ': failed to update API');
+            }
+        }
+    " "$target_id" "$PROJECTS_DIR" "$KANBAN_API_URL" "$KANBAN_API_KEY" "$GH_TOKEN"
+}
+
+cmd_version() {
+    if [ -f "$ORCH" ]; then
+        node -e "
+            const fs = require('fs');
+            const src = fs.readFileSync('$ORCH', 'utf8');
+            const m = src.match(/__ORCHESTRATOR_VERSION__/) || src.match(/\"([0-9]+\.[0-9]+\.[0-9]+)\"/);
+            // Try to extract version from the bundled code
+            console.log('taskinfa orchestrator');
+            try {
+                const v = require('$ORCH').__version || 'unknown';
+                console.log('Version: ' + v);
+            } catch {
+                console.log('Version: (could not detect — run taskinfa update)');
+            }
+        " 2>/dev/null || echo "taskinfa orchestrator (version unknown)"
+    else
+        echo "orchestrator.js not installed — run: taskinfa update"
+    fi
+}
+
+cmd_usage() {
+    echo "Usage: taskinfa <command>"
+    echo
+    echo "Commands:"
+    echo "  start      Start the orchestrator daemon"
+    echo "  stop       Stop the orchestrator"
+    echo "  restart    Restart the orchestrator"
+    echo "  status     Show orchestrator status"
+    echo "  logs       Tail orchestrator logs"
+    echo "  doctor     Run health checks"
+    echo "  update     Download latest orchestrator.js"
+    echo "  auth       Reconfigure credentials"
+    echo "  projects   List projects from API"
+    echo "  init [id]  Clone project(s) immediately"
+    echo "  version    Show version info"
+}
+
+case "${1:-}" in
+    start)    cmd_start ;;
+    stop)     cmd_stop ;;
+    restart)  cmd_restart ;;
+    status)   cmd_status ;;
+    logs)     cmd_logs ;;
+    doctor)   cmd_doctor ;;
+    update)   cmd_update ;;
+    auth)     cmd_auth ;;
+    projects) cmd_projects ;;
+    init)     cmd_init "$2" ;;
+    version)  cmd_version ;;
+    *)        cmd_usage ;;
+esac
+EOFCLI
+
+chmod +x "$TASKINFA_HOME/bin/taskinfa"
+ok "Created CLI at $TASKINFA_HOME/bin/taskinfa"
+
+# ── Add to PATH ───────────────────────────────────────────────────
+
+SHELL_RC=""
+if [ -f "$HOME/.bashrc" ]; then
+    SHELL_RC="$HOME/.bashrc"
+elif [ -f "$HOME/.zshrc" ]; then
+    SHELL_RC="$HOME/.zshrc"
+elif [ -f "$HOME/.profile" ]; then
+    SHELL_RC="$HOME/.profile"
 fi
-EOFSTOP
 
-chmod +x "$WORKER_DIR/start.sh"
-chmod +x "$WORKER_DIR/stop.sh"
+PATH_LINE="export PATH=\"$TASKINFA_HOME/bin:\$PATH\""
 
-print_success "Helper scripts created"
+if [ -n "$SHELL_RC" ]; then
+    if ! grep -qF "$TASKINFA_HOME/bin" "$SHELL_RC" 2>/dev/null; then
+        echo "" >> "$SHELL_RC"
+        echo "# Taskinfa CLI" >> "$SHELL_RC"
+        echo "$PATH_LINE" >> "$SHELL_RC"
+        ok "Added to PATH in $SHELL_RC"
+    else
+        ok "PATH already configured in $SHELL_RC"
+    fi
+else
+    warn "Could not detect shell rc file. Add this to your shell profile:"
+    echo "  $PATH_LINE"
+fi
+
+# ── Summary ───────────────────────────────────────────────────────
 
 echo
-echo -e "${GREEN}╔════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║              INSTALLATION COMPLETE! 🎉                              ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════════════════════════════╝${NC}"
+echo "────────────────────────────────────────"
+echo -e "${GREEN}${BOLD}Installation complete!${NC}"
+echo "────────────────────────────────────────"
 echo
-echo "Your Taskinfa worker has been set up successfully!"
-echo
-echo -e "Worker directory: ${BLUE}$WORKER_DIR${NC}"
+echo "Paths:"
+echo "  Home:     $TASKINFA_HOME"
+echo "  Projects: $PROJECTS_DIR"
+echo "  CLI:      $TASKINFA_HOME/bin/taskinfa"
+echo "  Config:   $TASKINFA_HOME/config.env"
 echo
 echo "Next steps:"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  1. Open a new terminal (or run: source $SHELL_RC)"
+echo "  2. Run: taskinfa doctor     — verify everything is working"
+echo "  3. Run: taskinfa start      — start the orchestrator"
+echo "  4. Run: taskinfa status     — check it's running"
 echo
-echo "1. Create tasks in the Taskinfa dashboard:"
-echo -e "   ${BLUE}https://taskinfa-kanban.secan-ltd.workers.dev/dashboard${NC}"
+echo "Create projects in the dashboard, and the orchestrator will"
+echo "auto-clone repos and start processing tasks."
 echo
-echo "2. Start the worker:"
-echo -e "   ${BLUE}cd $WORKER_DIR${NC}"
-echo -e "   ${BLUE}./start.sh${NC}"
-echo
-echo "3. View worker logs:"
-echo -e "   ${BLUE}tail -f $WORKER_DIR/logs/worker.log${NC}"
-echo
-echo "4. Stop the worker:"
-echo -e "   ${BLUE}cd $WORKER_DIR${NC}"
-echo -e "   ${BLUE}./stop.sh${NC}"
-echo
-echo "For help and documentation:"
-echo "  • Documentation: https://github.com/secanltd/taskinfa-kanban"
-echo "  • Issues: https://github.com/secanltd/taskinfa-kanban/issues"
-echo
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo
-read -p "Would you like to start the worker now? [Y/n] " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    cd "$WORKER_DIR"
-    ./start.sh
-    echo
-    print_success "Worker is now running!"
-    echo
-    echo "View logs with: tail -f $WORKER_DIR/logs/worker.log"
-fi
-
-echo
-print_success "Setup complete! Happy automating! 🚀"
