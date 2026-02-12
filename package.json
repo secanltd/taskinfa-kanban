@@ -15,11 +15,13 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "dashboard:dev": "npm run dev --workspace=packages/dashboard",
     "telegram:dev": "npm run dev --workspace=packages/telegram",
-    "orchestrator": "npx tsx --env-file=.env scripts/orchestrator.ts"
+    "orchestrator": "npx tsx --env-file=.env scripts/orchestrator.ts",
+    "build:orchestrator": "node scripts/build-orchestrator.js"
   },
   "devDependencies": {
-    "turbo": "^2.3.3",
+    "esbuild": "^0.25.12",
     "tsx": "^4.7.0",
+    "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   },
   "engines": {

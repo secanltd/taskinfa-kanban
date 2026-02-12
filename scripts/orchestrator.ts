@@ -18,8 +18,31 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { existsSync, appendFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
+// ── Version (injected at build time by esbuild) ─────────────────────
+
+declare const __ORCHESTRATOR_VERSION__: string;
+const VERSION = typeof __ORCHESTRATOR_VERSION__ !== 'undefined' ? __ORCHESTRATOR_VERSION__ : 'dev';
+
+// ── Config.env loading ──────────────────────────────────────────────
+
+const CONFIG_FILE = process.env.TASKINFA_CONFIG || '';
+if (CONFIG_FILE && existsSync(CONFIG_FILE)) {
+  const lines = readFileSync(CONFIG_FILE, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx);
+    const value = trimmed.slice(eqIdx + 1);
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
 
 // ── Config ──────────────────────────────────────────────────────────
 
@@ -29,8 +52,10 @@ const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '900000', 10); // 15
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '3', 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/workspace';
+const TASKINFA_HOME = process.env.TASKINFA_HOME || '';
+const PROJECTS_DIR = process.env.PROJECTS_DIR || join(WORKSPACE_ROOT, 'projects');
 const GH_TOKEN = process.env.GH_TOKEN || '';
-const LOG_DIR = join(WORKSPACE_ROOT, '.memory');
+const LOG_DIR = TASKINFA_HOME ? join(TASKINFA_HOME, 'logs') : join(WORKSPACE_ROOT, '.memory');
 const LOG_FILE = join(LOG_DIR, 'orchestrator.log');
 
 // Track active Claude processes
@@ -100,6 +125,8 @@ interface TaskList {
   id: string;
   name: string;
   working_directory: string;
+  repository_url: string | null;
+  is_initialized: boolean;
   slug: string | null;
 }
 
@@ -107,6 +134,61 @@ interface Session {
   id: string;
   project_id: string | null;
   status: string;
+}
+
+// ── Project initialization ──────────────────────────────────────────
+
+function gitClone(repoUrl: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let cloneUrl = repoUrl;
+    if (GH_TOKEN && cloneUrl.startsWith('https://github.com/')) {
+      cloneUrl = cloneUrl.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`);
+    }
+    const proc = spawn('git', ['clone', cloneUrl, dest], { stdio: 'pipe' });
+    let stderr = '';
+    proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`git clone failed (exit ${code}): ${stderr.slice(-200)}`));
+    });
+    proc.on('error', reject);
+  });
+}
+
+async function initializeProjects(): Promise<void> {
+  const { task_lists } = await apiGet<{ task_lists: TaskList[] }>('/api/task-lists');
+
+  for (const project of task_lists) {
+    if (project.is_initialized) continue;
+    if (!project.repository_url) continue;
+
+    const projectDir = join(PROJECTS_DIR, project.id);
+
+    if (existsSync(projectDir)) {
+      log('INFO', 'Project directory exists, marking initialized', { projectId: project.id });
+      try {
+        await apiPatch(`/api/task-lists/${project.id}`, {
+          working_directory: projectDir,
+          is_initialized: true,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to mark project initialized', { projectId: project.id, error: String(e) });
+      }
+      continue;
+    }
+
+    log('INFO', 'Cloning project repository', { projectId: project.id, repo: project.repository_url });
+    try {
+      await gitClone(project.repository_url, projectDir);
+      await apiPatch(`/api/task-lists/${project.id}`, {
+        working_directory: projectDir,
+        is_initialized: true,
+      });
+      log('INFO', 'Project initialized', { projectId: project.id, dir: projectDir });
+    } catch (e) {
+      log('ERROR', 'Failed to initialize project', { projectId: project.id, error: String(e) });
+    }
+  }
 }
 
 // ── Core logic ──────────────────────────────────────────────────────
@@ -338,6 +420,9 @@ async function pollCycle() {
   log('INFO', `Poll cycle starting (${activeSessions.size}/${MAX_CONCURRENT} active sessions)`);
 
   try {
+    // Initialize any new projects (clone repos) before processing tasks
+    await initializeProjects();
+
     const projectTasks = await getProjectTasks();
     const activeProjectIds = await getActiveSessions();
 
@@ -381,11 +466,12 @@ async function pollCycle() {
 }
 
 async function main() {
-  log('INFO', 'Orchestrator starting', {
+  log('INFO', `Orchestrator v${VERSION} starting`, {
     apiUrl: API_URL,
     pollInterval: POLL_INTERVAL,
     maxConcurrent: MAX_CONCURRENT,
     maxRetries: MAX_RETRIES,
+    projectsDir: PROJECTS_DIR,
   });
 
   if (!API_KEY) {
