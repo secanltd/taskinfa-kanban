@@ -154,11 +154,13 @@ function buildSystemPrompt(task: Task, project: TaskList | null): string {
 ## Git Workflow
 
 After completing the task, create a PR for review:
-1. Create branch: git checkout -b ${branchName}
-2. Stage and commit your changes (use conventional commits, e.g. "feat: ..." or "fix: ...")
-3. Push: git push -u origin ${branchName}
-4. Create PR: gh pr create --title "${task.title}" --body "Automated PR for task ${task.id}"
-5. Capture the PR URL from the gh output, then update the task:
+1. Start from main: git checkout main && git pull origin main
+2. Create branch: git checkout -b ${branchName}
+3. Stage all changes including memory: git add -A
+4. Commit (conventional commits, e.g. "feat: ..." or "fix: ...")
+5. Push: git push -u origin ${branchName}
+6. Create PR: gh pr create --title "${task.title}" --body "Automated PR for task ${task.id}"
+7. Capture the PR URL from the gh output, then update the task:
    curl -s -X PATCH "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID" \\
      -H "Authorization: Bearer $KANBAN_API_KEY" \\
      -H "Content-Type: application/json" \\
