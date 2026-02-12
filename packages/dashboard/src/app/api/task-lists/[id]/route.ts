@@ -69,7 +69,7 @@ export async function PATCH(
     }
 
     const body: any = await request.json();
-    const { name, description, repository_url, working_directory } = body;
+    const { name, description, repository_url, working_directory, is_initialized } = body;
 
     // Build dynamic UPDATE query
     const updates: string[] = ['updated_at = datetime("now")'];
@@ -114,6 +114,11 @@ export async function PATCH(
       });
       updates.push('working_directory = ?');
       updateParams.push(validatedWorkingDir || '/workspace');
+    }
+
+    if (is_initialized !== undefined) {
+      updates.push('is_initialized = ?');
+      updateParams.push(is_initialized ? '1' : '0');
     }
 
     updateParams.push(params.id, auth.workspaceId);

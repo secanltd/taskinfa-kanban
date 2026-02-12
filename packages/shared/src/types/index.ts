@@ -22,6 +22,7 @@ export interface TaskList {
   working_directory: string;
   slug: string | null;
   is_active: boolean;
+  is_initialized: boolean;
   created_at: string;
   updated_at: string;
 }
