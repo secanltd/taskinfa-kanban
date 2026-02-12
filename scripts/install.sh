@@ -532,19 +532,13 @@ cmd_init() {
 
 cmd_version() {
     if [ -f "$ORCH" ]; then
-        node -e "
-            const fs = require('fs');
-            const src = fs.readFileSync('$ORCH', 'utf8');
-            const m = src.match(/__ORCHESTRATOR_VERSION__/) || src.match(/\"([0-9]+\.[0-9]+\.[0-9]+)\"/);
-            // Try to extract version from the bundled code
-            console.log('taskinfa orchestrator');
-            try {
-                const v = require('$ORCH').__version || 'unknown';
-                console.log('Version: ' + v);
-            } catch {
-                console.log('Version: (could not detect — run taskinfa update)');
-            }
-        " 2>/dev/null || echo "taskinfa orchestrator (version unknown)"
+        local ver
+        ver=$(node -e "
+            const src = require('fs').readFileSync('$ORCH', 'utf8');
+            const m = src.match(/=\"(\d+\.\d+\.\d+)\"/);
+            console.log(m ? m[1] : 'unknown');
+        " 2>/dev/null || echo "unknown")
+        echo "taskinfa orchestrator v${ver}"
     else
         echo "orchestrator.js not installed — run: taskinfa update"
     fi
