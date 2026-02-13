@@ -18,7 +18,6 @@ export default function ProjectsTable({ initialProjects }: Props) {
     name: '',
     description: '',
     repository_url: '',
-    working_directory: '/workspace',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,7 +48,6 @@ export default function ProjectsTable({ initialProjects }: Props) {
         name: '',
         description: '',
         repository_url: '',
-        working_directory: '/workspace',
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
@@ -138,36 +136,18 @@ export default function ProjectsTable({ initialProjects }: Props) {
 
             <div>
               <label className="block text-sm font-medium text-terminal-muted mb-2">
-                Git Repository URL (Optional)
+                GitHub Repository URL <span className="text-terminal-red">*</span>
               </label>
               <input
                 type="text"
                 value={formData.repository_url}
                 onChange={(e) => setFormData({ ...formData, repository_url: e.target.value })}
                 className="input-field w-full"
-                placeholder="https://github.com/yourorg/repo or git@github.com:yourorg/repo.git"
+                placeholder="https://github.com/yourorg/repo.git"
+                required
               />
               <p className="text-xs text-terminal-muted mt-1">
-                Workers will clone this repository automatically. Supports both HTTPS and SSH formats.
-              </p>
-              <p className="text-xs text-terminal-amber mt-1">
-                For private repos: You&apos;ll need to provide a GitHub Personal Access Token during worker setup
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-2">
-                Working Directory
-              </label>
-              <input
-                type="text"
-                value={formData.working_directory}
-                onChange={(e) => setFormData({ ...formData, working_directory: e.target.value })}
-                className="input-field w-full"
-                placeholder="/workspace"
-              />
-              <p className="text-xs text-terminal-muted mt-1">
-                Base directory where project will be cloned
+                HTTPS URL of the GitHub repository. SSH URLs (git@github.com:...) are also accepted and will be converted automatically.
               </p>
             </div>
 
@@ -187,7 +167,6 @@ export default function ProjectsTable({ initialProjects }: Props) {
                     name: '',
                     description: '',
                     repository_url: '',
-                    working_directory: '/workspace',
                   });
                 }}
                 className="btn-secondary"
