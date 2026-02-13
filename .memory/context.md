@@ -4,6 +4,22 @@
 
 ## Recent Changes
 
+### PR Reviewer Skill & Skill Sync (feat: add-taskinfa-gh-pr-reviewer-skill)
+- **Created** `.claude/skills/taskinfa-gh-pr-reviewer/SKILL.md`:
+  - Claude Code skill for reviewing GitHub PRs with summary + inline comments
+  - Uses YAML frontmatter format (`disable-model-invocation: true`, `user-invocable: true`)
+  - Invoked via `/taskinfa-gh-pr-reviewer owner/repo 26`
+  - Posts review with inline comments via `gh api repos/{owner}/{repo}/pulls/{pr}/reviews`
+  - Uses GitHub suggestion blocks for concrete fixes
+  - Classifies findings as Blocking vs Nit, gives verdict (approve/request changes/comment)
+- **Extended** `taskinfa update` command (`/workspace/.taskinfa-kanban/bin/taskinfa`):
+  - Added `sync_skills()` function that runs after orchestrator download
+  - Fetches skill directories from GitHub API (`repos/secanltd/taskinfa-kanban/contents/.claude/skills`)
+  - Downloads each skill's `SKILL.md` and compares with `~/.claude/skills/`
+  - Copies new/updated skills to global `~/.claude/skills/` for cross-project availability
+  - Supports auth via `GH_TOKEN` env var or `gh auth token`
+  - Prints summary: "Synced N new skill(s)", "Updated N skill(s)", or "All skills up to date"
+
 ### Taskinfa CLI Improvements (feat: taskinfa-cli-improvements)
 - **Removed** `taskinfa version` command entirely from `scripts/install.sh`:
   - Deleted `cmd_version()` function
