@@ -102,6 +102,15 @@ export default function TaskCard({
             {task.loop_count} loops
           </span>
         )}
+        {task.error_count > 0 && (
+          <span className={`px-2 py-0.5 rounded ${
+            task.error_count >= 3
+              ? 'bg-terminal-red/20 text-terminal-red'
+              : 'bg-terminal-amber/20 text-terminal-amber'
+          }`}>
+            {task.error_count} error{task.error_count !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
       {/* Labels */}
