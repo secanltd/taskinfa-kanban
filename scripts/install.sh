@@ -422,12 +422,38 @@ cmd_doctor() {
 }
 
 cmd_update() {
+    local base_url="https://github.com/secanltd/taskinfa-kanban/releases/latest/download"
+    local cli_path="$TASKINFA_HOME/bin/taskinfa"
+
+    # Update CLI first so new features take effect on next run
+    echo "Updating CLI..."
+    local cli_url="$base_url/taskinfa-cli.sh"
+    if curl -fsSL "$cli_url" -o "$cli_path.tmp"; then
+        if [ ! -s "$cli_path.tmp" ]; then
+            rm -f "$cli_path.tmp"
+            echo "Warning: downloaded CLI is empty, skipping CLI update"
+        else
+            chmod +x "$cli_path.tmp"
+            mv "$cli_path.tmp" "$cli_path"
+            echo "Updated CLI"
+        fi
+    else
+        rm -f "$cli_path.tmp"
+        echo "Warning: could not download CLI update, skipping"
+    fi
+
+    # Update orchestrator
     local old_ver
     old_ver=$(get_installed_version)
     echo "Current version: v${old_ver}"
     echo "Downloading latest orchestrator..."
-    local url="https://github.com/secanltd/taskinfa-kanban/releases/latest/download/orchestrator.js"
-    if curl -fsSL "$url" -o "$ORCH.tmp"; then
+    local orch_url="$base_url/orchestrator.js"
+    if curl -fsSL "$orch_url" -o "$ORCH.tmp"; then
+        if [ ! -s "$ORCH.tmp" ]; then
+            rm -f "$ORCH.tmp"
+            echo "Error: downloaded orchestrator is empty"
+            exit 1
+        fi
         mv "$ORCH.tmp" "$ORCH"
         local new_ver
         new_ver=$(get_installed_version)
@@ -435,7 +461,7 @@ cmd_update() {
         echo "Restart with: taskinfa restart"
     else
         rm -f "$ORCH.tmp"
-        echo "Error: download failed"
+        echo "Error: orchestrator download failed"
         exit 1
     fi
 
@@ -697,7 +723,7 @@ cmd_usage() {
     echo "  status     Show orchestrator status"
     echo "  logs       Tail orchestrator logs"
     echo "  doctor     Run health checks"
-    echo "  update     Download latest orchestrator.js + sync skills"
+    echo "  update     Update CLI, orchestrator, and skills"
     echo "  auth       Reconfigure credentials"
     echo "  projects   List projects from API"
     echo "  init [id]  Clone project(s) immediately"

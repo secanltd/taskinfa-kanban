@@ -4,6 +4,19 @@
 
 ## Recent Changes
 
+### Fix taskinfa update CLI self-update (fix: taskinfa-update-cli)
+- **Modified** `scripts/install.sh` `cmd_update()`:
+  - Now downloads and replaces the CLI script itself (`$TASKINFA_HOME/bin/taskinfa`) from `taskinfa-cli.sh` release asset
+  - CLI update happens before orchestrator update so new features take effect on next run
+  - Safe update pattern: downloads to `.tmp`, validates non-empty, then moves into place
+  - CLI download failure is non-fatal (warning only), orchestrator download failure is fatal
+- **Created** `scripts/extract-cli.sh`:
+  - Extracts the CLI heredoc from `install.sh` into a standalone file for release packaging
+  - Validates output is non-empty and starts with shebang
+- **Updated** `.github/workflows/release-orchestrator.yml`:
+  - Added "Extract CLI script" step that runs `scripts/extract-cli.sh`
+  - Added `dist/taskinfa-cli.sh` as a GitHub Release asset alongside `orchestrator.js`
+
 ### Global Modal Component (feat: global-modal-component)
 - **Created** `packages/dashboard/src/components/Modal.tsx` - A reusable global Modal component with:
   - `Modal` (default export): Handles backdrop, click-outside-to-close, ESC key, body scroll lock, size variants (sm/md/lg/xl)
