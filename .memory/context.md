@@ -4,6 +4,12 @@
 
 ## Recent Changes
 
+### Merge and Deploy (2026-02-13)
+- **Merged** PR #32 (Fix taskinfa update CLI self-update) into main
+- **Tagged** `orchestrator/v1.0.5` — triggers release workflow (orchestrator.js + taskinfa-cli.sh)
+- **Tagged** `deploy/test/2.0.14` — deploys dashboard to test environment
+- **Tagged** `deploy/prod/2.0.14` — deploys dashboard to production environment
+
 ### Fix taskinfa update CLI self-update (fix: taskinfa-update-cli)
 - **Modified** `scripts/install.sh` `cmd_update()`:
   - Now downloads and replaces the CLI script itself (`$TASKINFA_HOME/bin/taskinfa`) from `taskinfa-cli.sh` release asset
