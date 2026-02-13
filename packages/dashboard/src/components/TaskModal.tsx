@@ -40,6 +40,7 @@ export default function TaskModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResettingErrors, setIsResettingErrors] = useState(false);
 
   // Form state
   const [title, setTitle] = useState(task.title);
@@ -143,6 +144,27 @@ export default function TaskModal({
     setStatus(task.status);
     setLabelsInput((task.labels || []).join(', '));
     setIsEditing(false);
+  };
+
+  const handleResetErrorCount = async () => {
+    setIsResettingErrors(true);
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error_count: 0 }),
+      });
+
+      if (!response.ok) throw new Error('Failed to reset error count');
+
+      const data = await response.json() as { task: Task };
+      onUpdate(data.task);
+    } catch (error) {
+      console.error('Error resetting error count:', error);
+      alert('Failed to reset error count. Please try again.');
+    } finally {
+      setIsResettingErrors(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -319,18 +341,57 @@ export default function TaskModal({
           </div>
 
           {/* Execution Info (read-only) */}
-          {!isEditing && (task.loop_count > 0 || task.assigned_to) && (
-            <div className="grid grid-cols-2 gap-4">
-              {task.assigned_to && (
-                <div>
-                  <label className="block text-sm font-medium text-terminal-muted mb-2">Assigned To</label>
-                  <p className="text-terminal-text">{formatWorkerName(task.assigned_to)}</p>
-                </div>
-              )}
-              {task.loop_count > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-terminal-muted mb-2">Loop Count</label>
-                  <p className="text-terminal-text">{task.loop_count}</p>
+          {!isEditing && (task.loop_count > 0 || task.error_count > 0 || task.assigned_to) && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {task.assigned_to && (
+                  <div>
+                    <label className="block text-sm font-medium text-terminal-muted mb-2">Assigned To</label>
+                    <p className="text-terminal-text">{formatWorkerName(task.assigned_to)}</p>
+                  </div>
+                )}
+                {task.loop_count > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-terminal-muted mb-2">Loop Count</label>
+                    <p className="text-terminal-text">{task.loop_count}</p>
+                  </div>
+                )}
+              </div>
+              {task.error_count > 0 && (
+                <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-terminal-red/20 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-terminal-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-terminal-red">
+                          {task.error_count} error{task.error_count !== 1 ? 's' : ''}
+                          {task.error_count >= 5 && (
+                            <span className="ml-2 text-xs font-normal text-terminal-red/80">
+                              — task will be skipped by orchestrator
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-terminal-muted mt-0.5">
+                          Orchestrator skips tasks after too many errors (default: 5)
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleResetErrorCount}
+                      disabled={isResettingErrors}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md
+                                 bg-terminal-surface text-terminal-text border border-terminal-border
+                                 hover:bg-terminal-surface-hover hover:border-terminal-border-hover
+                                 disabled:opacity-50 transition-colors flex-shrink-0"
+                    >
+                      {isResettingErrors ? 'Resetting...' : 'Reset'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
