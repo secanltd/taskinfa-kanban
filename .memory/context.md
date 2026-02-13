@@ -4,6 +4,18 @@
 
 ## Recent Changes
 
+### Board Manager Skill (feat: add-taskinfa-board-manager-skill)
+- **Created** `.claude/skills/taskinfa-board-manager/SKILL.md`:
+  - Claude Code skill for creating, updating, and querying Kanban tasks from any session
+  - Uses YAML frontmatter format (`disable-model-invocation: true`, `user-invocable: true`)
+  - Invoked via `/taskinfa-board-manager <action> [details]` with natural language
+  - Reads API config from `$TASKINFA_HOME/config.env` or environment variables
+  - **Create**: Fetches task lists, creates tasks with quality descriptions, supports bulk creation
+  - **Update**: Finds tasks by ID or name search, applies field changes, confirms what changed
+  - **List/Query**: Filters by project, status, priority; displays formatted results
+  - Allowed tools: Bash, Read (for config reading and curl API calls)
+  - Distributed via `taskinfa update` skill sync
+
 ### PR Reviewer Skill & Skill Sync (feat: add-taskinfa-gh-pr-reviewer-skill)
 - **Created** `.claude/skills/taskinfa-gh-pr-reviewer/SKILL.md`:
   - Claude Code skill for reviewing GitHub PRs with summary + inline comments
