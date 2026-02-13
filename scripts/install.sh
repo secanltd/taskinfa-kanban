@@ -256,7 +256,7 @@ cmd_start() {
     fi
     load_config
     export TASKINFA_CONFIG="$CONFIG"
-    nohup node "$ORCH" >> "$LOG_FILE" 2>&1 &
+    nohup node "$ORCH" > /dev/null 2>&1 &
     echo $! > "$PID_FILE"
     echo "Orchestrator started (PID $!)"
     echo "Logs: $LOG_FILE"

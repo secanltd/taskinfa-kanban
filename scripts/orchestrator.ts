@@ -65,12 +65,12 @@ const activeSessions = new Map<string, { process: ChildProcess; sessionId: strin
 
 function log(level: 'INFO' | 'WARN' | 'ERROR', msg: string, data?: Record<string, unknown>) {
   const entry = `[${new Date().toISOString()}] [${level}] ${msg}${data ? ' ' + JSON.stringify(data) : ''}`;
-  console.log(entry);
   try {
     if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
     appendFileSync(LOG_FILE, entry + '\n');
   } catch {
-    // Best-effort logging
+    // Fall back to stdout if file write fails
+    console.log(entry);
   }
 }
 
