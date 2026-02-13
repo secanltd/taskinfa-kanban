@@ -138,9 +138,19 @@ interface Session {
 
 // ── Project initialization ──────────────────────────────────────────
 
+function toHttpsUrl(repoUrl: string): string {
+  // git@github.com:owner/repo.git → https://github.com/owner/repo.git
+  const sshMatch = repoUrl.match(/^git@github\.com:(.+)$/);
+  if (sshMatch) return `https://github.com/${sshMatch[1]}`;
+  // ssh://git@github.com/owner/repo → https://github.com/owner/repo
+  const sshProtoMatch = repoUrl.match(/^ssh:\/\/git@github\.com\/(.+)$/);
+  if (sshProtoMatch) return `https://github.com/${sshProtoMatch[1]}`;
+  return repoUrl;
+}
+
 function gitClone(repoUrl: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    let cloneUrl = repoUrl;
+    let cloneUrl = toHttpsUrl(repoUrl);
     if (GH_TOKEN && cloneUrl.startsWith('https://github.com/')) {
       cloneUrl = cloneUrl.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`);
     }
