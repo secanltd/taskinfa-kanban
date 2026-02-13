@@ -297,9 +297,49 @@ cmd_logs() {
     tail -f "$LOG_FILE"
 }
 
+get_installed_version() {
+    if [ -f "$ORCH" ]; then
+        node -e "
+            const src = require('fs').readFileSync('$ORCH', 'utf8');
+            const m = src.match(/=\"(\d+\.\d+\.\d+)\"/);
+            console.log(m ? m[1] : 'unknown');
+        " 2>/dev/null || echo "unknown"
+    else
+        echo "not installed"
+    fi
+}
+
+get_latest_version() {
+    local url="https://api.github.com/repos/secanltd/taskinfa-kanban/releases/latest"
+    local response
+    response=$(curl -fsSL -H "Accept: application/vnd.github.v3+json" "$url" 2>/dev/null) || return 1
+    echo "$response" | node -e "
+        const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+        const tag = data.tag_name || '';
+        console.log(tag.replace(/^v/, ''));
+    " 2>/dev/null || return 1
+}
+
 cmd_doctor() {
     echo "Taskinfa Doctor"
     echo "───────────────"
+    echo
+
+    # Version info
+    local installed_ver
+    installed_ver=$(get_installed_version)
+    echo "[ok] Installed version: v${installed_ver}"
+
+    local latest_ver
+    latest_ver=$(get_latest_version 2>/dev/null)
+    if [ -n "$latest_ver" ] && [ "$latest_ver" != "" ]; then
+        echo "[ok] Latest version:    v${latest_ver}"
+        if [ "$installed_ver" != "unknown" ] && [ "$installed_ver" != "not installed" ] && [ "$installed_ver" != "$latest_ver" ]; then
+            echo "[!!] Update available! Run: taskinfa update"
+        fi
+    else
+        echo "[--] Could not check latest version"
+    fi
     echo
 
     # Node.js
@@ -382,11 +422,16 @@ cmd_doctor() {
 }
 
 cmd_update() {
+    local old_ver
+    old_ver=$(get_installed_version)
+    echo "Current version: v${old_ver}"
     echo "Downloading latest orchestrator..."
     local url="https://github.com/secanltd/taskinfa-kanban/releases/latest/download/orchestrator.js"
     if curl -fsSL "$url" -o "$ORCH.tmp"; then
         mv "$ORCH.tmp" "$ORCH"
-        echo "Updated orchestrator.js"
+        local new_ver
+        new_ver=$(get_installed_version)
+        echo "Updated to: v${new_ver}"
         echo "Restart with: taskinfa restart"
     else
         rm -f "$ORCH.tmp"
@@ -530,20 +575,6 @@ cmd_init() {
     " "$target_id" "$PROJECTS_DIR" "$KANBAN_API_URL" "$KANBAN_API_KEY" "$GH_TOKEN"
 }
 
-cmd_version() {
-    if [ -f "$ORCH" ]; then
-        local ver
-        ver=$(node -e "
-            const src = require('fs').readFileSync('$ORCH', 'utf8');
-            const m = src.match(/=\"(\d+\.\d+\.\d+)\"/);
-            console.log(m ? m[1] : 'unknown');
-        " 2>/dev/null || echo "unknown")
-        echo "taskinfa orchestrator v${ver}"
-    else
-        echo "orchestrator.js not installed — run: taskinfa update"
-    fi
-}
-
 cmd_usage() {
     echo "Usage: taskinfa <command>"
     echo
@@ -558,7 +589,6 @@ cmd_usage() {
     echo "  auth       Reconfigure credentials"
     echo "  projects   List projects from API"
     echo "  init [id]  Clone project(s) immediately"
-    echo "  version    Show version info"
 }
 
 case "${1:-}" in
@@ -572,7 +602,6 @@ case "${1:-}" in
     auth)     cmd_auth ;;
     projects) cmd_projects ;;
     init)     cmd_init "$2" ;;
-    version)  cmd_version ;;
     *)        cmd_usage ;;
 esac
 EOFCLI
