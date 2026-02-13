@@ -438,6 +438,118 @@ cmd_update() {
         echo "Error: download failed"
         exit 1
     fi
+
+    echo
+    sync_skills
+}
+
+sync_skills() {
+    local repo="secanltd/taskinfa-kanban"
+    local skills_dir="$HOME/.claude/skills"
+    local api_base="https://api.github.com/repos/$repo"
+
+    # Build auth header if GH_TOKEN or gh CLI is available
+    local auth_header=""
+    if [ -n "${GH_TOKEN:-}" ]; then
+        auth_header="Authorization: token $GH_TOKEN"
+    elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+        local token
+        token=$(gh auth token 2>/dev/null || true)
+        if [ -n "$token" ]; then
+            auth_header="Authorization: token $token"
+        fi
+    fi
+
+    local curl_auth=()
+    if [ -n "$auth_header" ]; then
+        curl_auth=(-H "$auth_header")
+    fi
+
+    echo "Syncing skills from $repo..."
+
+    # List skill directories under .claude/skills/ in the repo
+    local tree_response
+    tree_response=$(curl -fsSL "${curl_auth[@]}" \
+        "$api_base/contents/.claude/skills" 2>/dev/null) || {
+        echo "  Could not fetch skills list from GitHub (may need authentication)"
+        return 0
+    }
+
+    # Parse skill directory names using node
+    local skill_names
+    skill_names=$(echo "$tree_response" | node -e "
+        const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+        if (!Array.isArray(data)) process.exit(0);
+        for (const item of data) {
+            if (item.type === 'dir') console.log(item.name);
+        }
+    " 2>/dev/null) || {
+        echo "  Could not parse skills list"
+        return 0
+    }
+
+    if [ -z "$skill_names" ]; then
+        echo "  No skills found in repo"
+        return 0
+    fi
+
+    local synced_new=()
+    local synced_updated=()
+    local up_to_date=0
+
+    while IFS= read -r skill_name; do
+        [ -z "$skill_name" ] && continue
+
+        # Fetch SKILL.md from the repo
+        local remote_content
+        remote_content=$(curl -fsSL "${curl_auth[@]}" \
+            "$api_base/contents/.claude/skills/$skill_name/SKILL.md" 2>/dev/null) || continue
+
+        # Extract the base64-encoded content and decode it
+        local decoded
+        decoded=$(echo "$remote_content" | node -e "
+            const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            if (data.content) {
+                process.stdout.write(Buffer.from(data.content, 'base64').toString('utf8'));
+            }
+        " 2>/dev/null) || continue
+
+        if [ -z "$decoded" ]; then
+            continue
+        fi
+
+        local local_skill_dir="$skills_dir/$skill_name"
+        local local_skill_file="$local_skill_dir/SKILL.md"
+
+        if [ -f "$local_skill_file" ]; then
+            # Compare with existing
+            local existing
+            existing=$(cat "$local_skill_file")
+            if [ "$existing" = "$decoded" ]; then
+                up_to_date=$((up_to_date + 1))
+                continue
+            fi
+            # Content differs — update
+            echo "$decoded" > "$local_skill_file"
+            synced_updated+=("$skill_name")
+        else
+            # New skill
+            mkdir -p "$local_skill_dir"
+            echo "$decoded" > "$local_skill_file"
+            synced_new+=("$skill_name")
+        fi
+    done <<< "$skill_names"
+
+    # Print summary
+    if [ ${#synced_new[@]} -gt 0 ]; then
+        echo "  Synced ${#synced_new[@]} new skill(s): $(IFS=', '; echo "${synced_new[*]}")"
+    fi
+    if [ ${#synced_updated[@]} -gt 0 ]; then
+        echo "  Updated ${#synced_updated[@]} skill(s): $(IFS=', '; echo "${synced_updated[*]}")"
+    fi
+    if [ ${#synced_new[@]} -eq 0 ] && [ ${#synced_updated[@]} -eq 0 ]; then
+        echo "  All skills up to date"
+    fi
 }
 
 cmd_auth() {
@@ -585,7 +697,7 @@ cmd_usage() {
     echo "  status     Show orchestrator status"
     echo "  logs       Tail orchestrator logs"
     echo "  doctor     Run health checks"
-    echo "  update     Download latest orchestrator.js"
+    echo "  update     Download latest orchestrator.js + sync skills"
     echo "  auth       Reconfigure credentials"
     echo "  projects   List projects from API"
     echo "  init [id]  Clone project(s) immediately"
