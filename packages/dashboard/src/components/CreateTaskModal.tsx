@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { Task, TaskStatus, TaskPriority, TaskList } from '@taskinfa/shared';
+import Modal, { ModalHeader, ModalFooter } from './Modal';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -44,25 +45,6 @@ export default function CreateTaskModal({
       setError('');
     }
   }, [isOpen, defaultTaskListId, taskLists]);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onClose();
-    }
-  }, [onClose]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-    };
-  }, [isOpen, handleKeyDown]);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,162 +97,142 @@ export default function CreateTaskModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-terminal-surface border border-terminal-border rounded-xl shadow-2xl max-w-lg w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-terminal-border">
-          <h2 className="text-lg font-semibold text-terminal-text">Create New Task</h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-terminal-muted hover:text-terminal-text hover:bg-terminal-bg rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+      <ModalHeader onClose={onClose}>Create New Task</ModalHeader>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {error && (
+          <div className="bg-terminal-red/10 border border-terminal-red/20 text-terminal-red rounded-lg px-4 py-3 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Title */}
+        <div>
+          <label className="block text-sm font-medium text-terminal-muted mb-2">
+            Title <span className="text-terminal-red">*</span>
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input-field w-full"
+            placeholder="What needs to be done?"
+            autoFocus
+          />
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {error && (
-            <div className="bg-terminal-red/10 border border-terminal-red/20 text-terminal-red rounded-lg px-4 py-3 text-sm">
-              {error}
-            </div>
-          )}
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium text-terminal-muted mb-2">
+            Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input-field w-full min-h-[80px] resize-y"
+            placeholder="Add more details (optional)"
+          />
+        </div>
 
-          {/* Title */}
+        {/* Project and Priority */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-terminal-muted mb-2">
-              Title <span className="text-terminal-red">*</span>
+              Project <span className="text-terminal-red">*</span>
             </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+            <select
+              value={taskListId}
+              onChange={(e) => setTaskListId(e.target.value)}
               className="input-field w-full"
-              placeholder="What needs to be done?"
-              autoFocus
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-terminal-muted mb-2">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="input-field w-full min-h-[80px] resize-y"
-              placeholder="Add more details (optional)"
-            />
-          </div>
-
-          {/* Project and Priority */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-2">
-                Project <span className="text-terminal-red">*</span>
-              </label>
-              <select
-                value={taskListId}
-                onChange={(e) => setTaskListId(e.target.value)}
-                className="input-field w-full"
-              >
-                {taskLists.length === 0 ? (
-                  <option value="">No projects available</option>
-                ) : (
-                  taskLists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-2">
-                Priority
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                className="input-field w-full"
-              >
-                {priorityOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
+            >
+              {taskLists.length === 0 ? (
+                <option value="">No projects available</option>
+              ) : (
+                taskLists.map((list) => (
+                  <option key={list.id} value={list.id}>
+                    {list.name}
                   </option>
-                ))}
-              </select>
-            </div>
+                ))
+              )}
+            </select>
           </div>
-
-          {/* Labels */}
           <div>
             <label className="block text-sm font-medium text-terminal-muted mb-2">
-              Labels
+              Priority
             </label>
-            <input
-              type="text"
-              value={labelsInput}
-              onChange={(e) => setLabelsInput(e.target.value)}
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
               className="input-field w-full"
-              placeholder="bug, feature, frontend (comma separated)"
-            />
+            >
+              {priorityOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Priority Legend */}
-          <div className="grid grid-cols-4 gap-2 pt-2">
-            {priorityOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setPriority(opt.value)}
-                className={`p-2 rounded-lg border text-center transition-all ${
-                  priority === opt.value
-                    ? opt.value === 'urgent'
-                      ? 'bg-terminal-red/20 border-terminal-red text-terminal-red'
-                      : opt.value === 'high'
-                      ? 'bg-terminal-amber/20 border-terminal-amber text-terminal-amber'
-                      : opt.value === 'medium'
-                      ? 'bg-terminal-blue/20 border-terminal-blue text-terminal-blue'
-                      : 'bg-terminal-muted/20 border-terminal-muted text-terminal-muted'
-                    : 'bg-terminal-bg border-terminal-border text-terminal-muted hover:border-terminal-border-hover'
-                }`}
-              >
-                <div className="text-sm font-medium">{opt.label}</div>
-              </button>
-            ))}
-          </div>
-        </form>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-terminal-border bg-terminal-bg">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-secondary"
-            disabled={isCreating}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            onClick={handleSubmit}
-            className="btn-primary"
-            disabled={isCreating || !title.trim() || !taskListId}
-          >
-            {isCreating ? 'Creating...' : 'Create Task'}
-          </button>
         </div>
-      </div>
-    </div>
+
+        {/* Labels */}
+        <div>
+          <label className="block text-sm font-medium text-terminal-muted mb-2">
+            Labels
+          </label>
+          <input
+            type="text"
+            value={labelsInput}
+            onChange={(e) => setLabelsInput(e.target.value)}
+            className="input-field w-full"
+            placeholder="bug, feature, frontend (comma separated)"
+          />
+        </div>
+
+        {/* Priority Legend */}
+        <div className="grid grid-cols-4 gap-2 pt-2">
+          {priorityOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setPriority(opt.value)}
+              className={`p-2 rounded-lg border text-center transition-all ${
+                priority === opt.value
+                  ? opt.value === 'urgent'
+                    ? 'bg-terminal-red/20 border-terminal-red text-terminal-red'
+                    : opt.value === 'high'
+                    ? 'bg-terminal-amber/20 border-terminal-amber text-terminal-amber'
+                    : opt.value === 'medium'
+                    ? 'bg-terminal-blue/20 border-terminal-blue text-terminal-blue'
+                    : 'bg-terminal-muted/20 border-terminal-muted text-terminal-muted'
+                  : 'bg-terminal-bg border-terminal-border text-terminal-muted hover:border-terminal-border-hover'
+              }`}
+            >
+              <div className="text-sm font-medium">{opt.label}</div>
+            </button>
+          ))}
+        </div>
+      </form>
+
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-secondary"
+          disabled={isCreating}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          onClick={handleSubmit}
+          className="btn-primary"
+          disabled={isCreating || !title.trim() || !taskListId}
+        >
+          {isCreating ? 'Creating...' : 'Create Task'}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }
