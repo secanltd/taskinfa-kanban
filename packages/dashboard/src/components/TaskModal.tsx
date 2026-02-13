@@ -370,14 +370,14 @@ export default function TaskModal({
                       <div>
                         <p className="text-sm font-medium text-terminal-red">
                           {task.error_count} error{task.error_count !== 1 ? 's' : ''}
-                          {task.error_count >= 3 && (
+                          {task.error_count >= 5 && (
                             <span className="ml-2 text-xs font-normal text-terminal-red/80">
                               — task will be skipped by orchestrator
                             </span>
                           )}
                         </p>
                         <p className="text-xs text-terminal-muted mt-0.5">
-                          Task fails after 3 consecutive errors
+                          Orchestrator skips tasks after too many errors (default: 5)
                         </p>
                       </div>
                     </div>

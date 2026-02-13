@@ -104,7 +104,7 @@ export default function TaskCard({
         )}
         {task.error_count > 0 && (
           <span className={`px-2 py-0.5 rounded ${
-            task.error_count >= 3
+            task.error_count >= 5
               ? 'bg-terminal-red/20 text-terminal-red'
               : 'bg-terminal-amber/20 text-terminal-amber'
           }`}>
