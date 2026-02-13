@@ -68,7 +68,6 @@ your-directory/
 | `taskinfa auth` | Reconfigure API key, dashboard URL, or GitHub token |
 | `taskinfa projects` | List all projects with name, repo, and init status |
 | `taskinfa init [id]` | Clone a project immediately (skip waiting for next poll) |
-| `taskinfa version` | Show installed orchestrator version |
 
 ## Configuration
 

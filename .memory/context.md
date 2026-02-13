@@ -4,6 +4,21 @@
 
 ## Recent Changes
 
+### Taskinfa CLI Improvements (feat: taskinfa-cli-improvements)
+- **Removed** `taskinfa version` command entirely from `scripts/install.sh`:
+  - Deleted `cmd_version()` function
+  - Removed from `cmd_usage()` help text
+  - Removed from case statement routing
+- **Extended** `taskinfa doctor` command with version info:
+  - Added `get_installed_version()` helper — extracts version from orchestrator.js binary
+  - Added `get_latest_version()` helper — fetches latest release from GitHub API
+  - Doctor now shows installed version and latest available version at the top
+  - Shows "[!!] Update available! Run: taskinfa update" when versions differ
+- **Updated** `taskinfa update` command:
+  - Now shows current version before downloading
+  - Shows updated version after download completes
+- **Cleaned up docs**: Removed `taskinfa version` row from command tables in `README.md` and `docs/WORKER_SETUP.md`
+
 ### Workspace Directory - Create Project Form (feat: workspace-directory)
 - **Modified** `packages/dashboard/src/components/projects/ProjectsTable.tsx`:
   - Removed "Working Directory" input field (directory is configured during taskinfa CLI install)
