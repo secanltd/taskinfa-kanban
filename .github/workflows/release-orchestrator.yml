@@ -23,6 +23,9 @@ jobs:
 
       - run: npm run build:orchestrator
 
+      - name: Extract CLI script
+        run: bash scripts/extract-cli.sh dist/taskinfa-cli.sh
+
       - name: Get version from tag
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/orchestrator/}" >> "$GITHUB_OUTPUT"
@@ -32,4 +35,6 @@ jobs:
         with:
           name: "Orchestrator ${{ steps.version.outputs.version }}"
           body: "Bundled orchestrator daemon — single-file Node.js executable with zero runtime dependencies."
-          files: dist/orchestrator.js
+          files: |
+            dist/orchestrator.js
+            dist/taskinfa-cli.sh
