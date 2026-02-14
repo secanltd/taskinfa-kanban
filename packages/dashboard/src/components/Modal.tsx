@@ -51,11 +51,11 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className={`bg-terminal-surface border border-terminal-border rounded-xl shadow-2xl ${sizeClasses[size]} w-full`}
+        className={`bg-terminal-surface border border-terminal-border sm:rounded-xl rounded-t-xl shadow-2xl ${sizeClasses[size]} w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -72,13 +72,13 @@ interface ModalHeaderProps {
 
 export function ModalHeader({ children, onClose, actions }: ModalHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-terminal-border">
-      <h2 className="text-lg font-semibold text-terminal-text">{children}</h2>
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-terminal-border flex-shrink-0">
+      <h2 className="text-base sm:text-lg font-semibold text-terminal-text">{children}</h2>
+      <div className="flex items-center gap-1 sm:gap-2">
         {actions}
         <button
           onClick={onClose}
-          className="p-2 text-terminal-muted hover:text-terminal-text hover:bg-terminal-bg rounded-lg transition-colors"
+          className="p-2 text-terminal-muted hover:text-terminal-text hover:bg-terminal-bg rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -95,7 +95,7 @@ interface ModalFooterProps {
 
 export function ModalFooter({ children }: ModalFooterProps) {
   return (
-    <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-terminal-border bg-terminal-bg rounded-b-xl">
+    <div className="flex items-center justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-terminal-border bg-terminal-bg sm:rounded-b-xl flex-shrink-0">
       {children}
     </div>
   );

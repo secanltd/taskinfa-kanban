@@ -47,19 +47,19 @@ export default async function SettingsPage() {
     <div className="min-h-screen bg-terminal-bg">
       {/* Header */}
       <header className="bg-terminal-surface border-b border-terminal-border">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <a href="/dashboard" className="flex items-center gap-2 text-terminal-muted hover:text-terminal-text transition-colors">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <a href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 text-terminal-muted hover:text-terminal-text transition-colors flex-shrink-0 touch-manipulation p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                <span className="text-sm">Dashboard</span>
+                <span className="text-sm hidden sm:inline">Dashboard</span>
               </a>
-              <div className="h-4 w-px bg-terminal-border" />
-              <div>
-                <h1 className="text-xl font-bold text-terminal-text">Settings</h1>
-                <p className="text-terminal-muted text-sm">
+              <div className="h-4 w-px bg-terminal-border hidden sm:block" />
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold text-terminal-text">Settings</h1>
+                <p className="text-terminal-muted text-xs sm:text-sm hidden sm:block">
                   Manage your account and API keys
                 </p>
               </div>
@@ -69,10 +69,10 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-8">
-        <div className="space-y-6">
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="space-y-4 sm:space-y-6">
           {/* Profile Section */}
-          <div className="card p-6">
+          <div className="card p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-terminal-text mb-4">Profile</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -111,7 +111,7 @@ export default async function SettingsPage() {
           </div>
 
           {/* Workspace Section */}
-          <div className="card p-6">
+          <div className="card p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-terminal-text mb-4">Workspace</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -120,7 +120,7 @@ export default async function SettingsPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-terminal-muted">Workspace ID</label>
-                <p className="text-terminal-text mt-1 font-mono text-sm bg-terminal-bg px-2 py-1 rounded inline-block">
+                <p className="text-terminal-text mt-1 font-mono text-xs sm:text-sm bg-terminal-bg px-2 py-1 rounded inline-block break-all">
                   {workspace.id}
                 </p>
               </div>
@@ -134,15 +134,15 @@ export default async function SettingsPage() {
           </div>
 
           {/* API Keys Section */}
-          <div className="card p-6">
+          <div className="card p-4 sm:p-6">
             <ApiKeyList />
           </div>
         </div>
       </main>
 
       <footer className="bg-terminal-surface border-t border-terminal-border mt-auto">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 text-center">
-          <span className="text-terminal-muted text-sm">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 text-center">
+          <span className="text-terminal-muted text-xs sm:text-sm">
             Developed by <span className="font-semibold text-terminal-text">SECAN</span> • Open Source MIT License
           </span>
         </div>

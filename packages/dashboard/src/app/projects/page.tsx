@@ -63,19 +63,19 @@ export default async function ProjectsPage() {
     <div className="min-h-screen bg-terminal-bg">
       {/* Header */}
       <header className="bg-terminal-surface border-b border-terminal-border">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="flex items-center gap-2 text-terminal-muted hover:text-terminal-text transition-colors">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 text-terminal-muted hover:text-terminal-text transition-colors flex-shrink-0 touch-manipulation p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                <span className="text-sm">Dashboard</span>
+                <span className="text-sm hidden sm:inline">Dashboard</span>
               </Link>
-              <div className="h-4 w-px bg-terminal-border" />
-              <div>
-                <h1 className="text-xl font-bold text-terminal-text">Projects</h1>
-                <p className="text-terminal-muted text-sm">
+              <div className="h-4 w-px bg-terminal-border hidden sm:block" />
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold text-terminal-text">Projects</h1>
+                <p className="text-terminal-muted text-xs sm:text-sm hidden sm:block">
                   Manage your task lists and worker projects
                 </p>
               </div>
@@ -87,7 +87,7 @@ export default async function ProjectsPage() {
               <div className="h-4 w-px bg-terminal-border hidden md:block" />
               <Link
                 href="/settings"
-                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-2 sm:px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors hidden sm:block"
               >
                 Settings
               </Link>
@@ -97,8 +97,8 @@ export default async function ProjectsPage() {
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-8">
-        <div className="card p-6">
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="card p-4 sm:p-6">
           {/* Info Section */}
           <div className="mb-6 p-4 bg-terminal-bg rounded-lg border border-terminal-border">
             <h2 className="text-lg font-semibold text-terminal-text mb-3">
@@ -125,8 +125,8 @@ export default async function ProjectsPage() {
       </main>
 
       <footer className="bg-terminal-surface border-t border-terminal-border mt-auto">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 text-center">
-          <span className="text-terminal-muted text-sm">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 text-center">
+          <span className="text-terminal-muted text-xs sm:text-sm">
             Developed by <span className="font-semibold text-terminal-text">SECAN</span> • Open Source MIT License
           </span>
         </div>

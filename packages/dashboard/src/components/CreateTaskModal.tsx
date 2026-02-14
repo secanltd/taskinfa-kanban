@@ -101,7 +101,7 @@ export default function CreateTaskModal({
       <ModalHeader onClose={onClose}>Create New Task</ModalHeader>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
         {error && (
           <div className="bg-terminal-red/10 border border-terminal-red/20 text-terminal-red rounded-lg px-4 py-3 text-sm">
             {error}
@@ -110,7 +110,7 @@ export default function CreateTaskModal({
 
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-terminal-muted mb-2">
+          <label className="block text-sm font-medium text-terminal-muted mb-1.5 sm:mb-2">
             Title <span className="text-terminal-red">*</span>
           </label>
           <input
@@ -125,7 +125,7 @@ export default function CreateTaskModal({
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-terminal-muted mb-2">
+          <label className="block text-sm font-medium text-terminal-muted mb-1.5 sm:mb-2">
             Description
           </label>
           <textarea
@@ -137,9 +137,9 @@ export default function CreateTaskModal({
         </div>
 
         {/* Project and Priority */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <label className="block text-sm font-medium text-terminal-muted mb-2">
+            <label className="block text-sm font-medium text-terminal-muted mb-1.5 sm:mb-2">
               Project <span className="text-terminal-red">*</span>
             </label>
             <select
@@ -159,7 +159,7 @@ export default function CreateTaskModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-terminal-muted mb-2">
+            <label className="block text-sm font-medium text-terminal-muted mb-1.5 sm:mb-2">
               Priority
             </label>
             <select
@@ -178,7 +178,7 @@ export default function CreateTaskModal({
 
         {/* Labels */}
         <div>
-          <label className="block text-sm font-medium text-terminal-muted mb-2">
+          <label className="block text-sm font-medium text-terminal-muted mb-1.5 sm:mb-2">
             Labels
           </label>
           <input
@@ -191,13 +191,13 @@ export default function CreateTaskModal({
         </div>
 
         {/* Priority Legend */}
-        <div className="grid grid-cols-4 gap-2 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
           {priorityOptions.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => setPriority(opt.value)}
-              className={`p-2 rounded-lg border text-center transition-all ${
+              className={`p-2 rounded-lg border text-center transition-all touch-manipulation min-h-[44px] ${
                 priority === opt.value
                   ? opt.value === 'urgent'
                     ? 'bg-terminal-red/20 border-terminal-red text-terminal-red'

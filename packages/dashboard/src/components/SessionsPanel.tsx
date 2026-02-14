@@ -100,7 +100,7 @@ export default function SessionsPanel({
           No active sessions
         </div>
       ) : (
-        <div className="divide-y divide-terminal-border max-h-[400px] overflow-y-auto scrollbar-thin">
+        <div className="divide-y divide-terminal-border max-h-[300px] sm:max-h-[400px] overflow-y-auto scrollbar-thin">
           {/* Active/problem sessions first */}
           {[...activeSessions, ...problemSessions].map((session) => (
             <div

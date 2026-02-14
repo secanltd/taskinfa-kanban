@@ -139,44 +139,42 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   return (
     <>
       {/* Header Bar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
         {/* Left: Connection Status */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                connected ? 'bg-terminal-green animate-pulse' : 'bg-terminal-red'
-              }`}
-            />
-            <span className="text-sm text-terminal-muted">
-              {connected ? 'Live updates' : 'Disconnected'}
-            </span>
-            {!connected && (
-              <button
-                onClick={reconnect}
-                className="text-sm text-terminal-blue hover:text-terminal-text underline"
-              >
-                Reconnect
-              </button>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              connected ? 'bg-terminal-green animate-pulse' : 'bg-terminal-red'
+            }`}
+          />
+          <span className="text-xs sm:text-sm text-terminal-muted">
+            {connected ? 'Live' : 'Offline'}
+          </span>
+          {!connected && (
+            <button
+              onClick={reconnect}
+              className="text-xs sm:text-sm text-terminal-blue hover:text-terminal-text underline touch-manipulation"
+            >
+              Reconnect
+            </button>
+          )}
         </div>
 
         {/* Right: Sessions + Create */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Sessions Indicator */}
           <button
             onClick={() => setIsSessionsPanelOpen(!isSessionsPanelOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
-                       hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
+                       hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors touch-manipulation min-h-[44px]"
           >
-            <span className={`w-2 h-2 rounded-full ${sessionStats.active > 0 ? 'bg-terminal-blue animate-pulse' : onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
-            <span className="text-sm text-terminal-text">
-              {sessionStats.active} session{sessionStats.active !== 1 ? 's' : ''} active
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sessionStats.active > 0 ? 'bg-terminal-blue animate-pulse' : onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
+            <span className="text-xs sm:text-sm text-terminal-text whitespace-nowrap">
+              {sessionStats.active} <span className="hidden sm:inline">session{sessionStats.active !== 1 ? 's' : ''} active</span><span className="sm:hidden">active</span>
             </span>
             {sessionStats.stuck > 0 && (
-              <span className="text-sm text-terminal-amber">
-                ({sessionStats.stuck} stuck)
+              <span className="text-xs sm:text-sm text-terminal-amber">
+                ({sessionStats.stuck})
               </span>
             )}
           </button>
@@ -207,21 +205,21 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
       )}
 
       {/* Kanban Board - Full Width with Horizontal Scroll */}
-      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-thin -mx-3 px-3 sm:mx-0 sm:px-0">
         {statusColumns.map((column) => {
           const columnTasks = getTasksByStatus(column.status);
           const isDragOver = dragOverColumn === column.status;
 
           return (
-            <div key={column.status} className="flex-shrink-0 w-72">
+            <div key={column.status} className="flex-shrink-0 w-[260px] sm:w-72">
               {/* Column Header */}
-              <div className="sticky top-0 z-10 bg-terminal-surface rounded-t-lg px-4 py-3 border border-terminal-border border-b-0">
+              <div className="sticky top-0 z-10 bg-terminal-surface rounded-t-lg px-3 sm:px-4 py-2.5 sm:py-3 border border-terminal-border border-b-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span>{column.icon}</span>
-                    <h2 className="font-semibold text-terminal-text">{column.label}</h2>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-sm sm:text-base">{column.icon}</span>
+                    <h2 className="font-semibold text-terminal-text text-sm sm:text-base">{column.label}</h2>
                   </div>
-                  <span className="text-sm text-terminal-muted bg-terminal-bg px-2 py-0.5 rounded">
+                  <span className="text-xs sm:text-sm text-terminal-muted bg-terminal-bg px-1.5 sm:px-2 py-0.5 rounded">
                     {columnTasks.length}
                   </span>
                 </div>
@@ -231,7 +229,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
               <div
                 className={`
                   bg-terminal-bg rounded-b-lg border border-terminal-border border-t-0
-                  min-h-[calc(100vh-320px)] p-3 space-y-3 transition-all duration-150
+                  min-h-[calc(100vh-320px)] p-2 sm:p-3 space-y-2 sm:space-y-3 transition-all duration-150
                   ${isDragOver ? 'ring-2 ring-terminal-blue ring-inset bg-terminal-blue/5' : ''}
                 `}
                 onDragOver={(e) => handleDragOver(e, column.status)}
@@ -263,7 +261,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
 
                 {columnTasks.length === 0 && (
                   <div className={`
-                    text-center py-12 rounded-lg border-2 border-dashed transition-colors
+                    text-center py-8 sm:py-12 rounded-lg border-2 border-dashed transition-colors text-sm
                     ${isDragOver
                       ? 'border-terminal-blue text-terminal-blue'
                       : 'border-terminal-border text-terminal-muted'
