@@ -21,7 +21,7 @@ CREATE TABLE tasks (
   workspace_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  status TEXT NOT NULL DEFAULT 'backlog' CHECK(status IN ('backlog', 'todo', 'in_progress', 'review', 'done')),
+  status TEXT NOT NULL DEFAULT 'backlog' CHECK(status IN ('backlog', 'refinement', 'todo', 'review_rejected', 'in_progress', 'ai_review', 'review', 'done')),
   priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
   labels TEXT NOT NULL DEFAULT '[]', -- JSON array
   assignee TEXT,

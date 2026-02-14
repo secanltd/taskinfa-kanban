@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Task, TaskStatus, TaskPriority } from '@taskinfa/shared';
+import type { Task, TaskStatus, TaskPriority, StatusColumn } from '@taskinfa/shared';
+import { getStatusColumns } from '@taskinfa/shared';
 import { formatWorkerName } from '@/utils/formatWorkerName';
 import Modal, { ModalHeader, ModalFooter } from './Modal';
+
+const DEFAULT_STATUS_COLUMNS = getStatusColumns({ refinement: false, ai_review: false });
 
 interface TaskModalProps {
   task: Task;
@@ -12,15 +15,8 @@ interface TaskModalProps {
   onUpdate: (updatedTask: Task) => void;
   onDelete: (taskId: string) => void;
   editMode?: boolean;
+  statusColumns?: StatusColumn[];
 }
-
-const statusColumns = [
-  { status: 'backlog' as TaskStatus, label: 'Backlog' },
-  { status: 'todo' as TaskStatus, label: 'To Do' },
-  { status: 'in_progress' as TaskStatus, label: 'In Progress' },
-  { status: 'review' as TaskStatus, label: 'Review' },
-  { status: 'done' as TaskStatus, label: 'Done' },
-];
 
 const priorityOptions: { value: TaskPriority; label: string }[] = [
   { value: 'low', label: 'Low' },
@@ -36,6 +32,7 @@ export default function TaskModal({
   onUpdate,
   onDelete,
   editMode: initialEditMode = false,
+  statusColumns = DEFAULT_STATUS_COLUMNS,
 }: TaskModalProps) {
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

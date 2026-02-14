@@ -1,6 +1,6 @@
 // Core domain types
 
-export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
+export type TaskStatus = 'backlog' | 'refinement' | 'todo' | 'review_rejected' | 'in_progress' | 'ai_review' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type CommentType = 'progress' | 'question' | 'summary' | 'error';
 export type AuthorType = 'bot' | 'user';
@@ -479,3 +479,68 @@ export const DEFAULT_FEATURE_CONFIGS: Record<FeatureKey, Record<string, unknown>
   refinement: { auto_advance: true },
   ai_review: { auto_advance_on_approve: true, max_review_rounds: 3 },
 };
+
+// Column definitions for the kanban board
+
+export interface StatusColumn {
+  status: TaskStatus;
+  label: string;
+  icon: string;
+  featureKey?: FeatureKey;
+}
+
+/** Base columns always present on the board */
+const BASE_COLUMNS: StatusColumn[] = [
+  { status: 'backlog', label: 'Backlog', icon: '📋' },
+  { status: 'todo', label: 'To Do', icon: '📝' },
+  { status: 'in_progress', label: 'In Progress', icon: '⚡' },
+  { status: 'review', label: 'Review', icon: '👀' },
+  { status: 'done', label: 'Done', icon: '✅' },
+];
+
+/** Feature-gated columns inserted at specific positions */
+const FEATURE_COLUMNS: Record<FeatureKey, StatusColumn[]> = {
+  refinement: [
+    { status: 'refinement', label: 'Refinement', icon: '🔍', featureKey: 'refinement' },
+  ],
+  ai_review: [
+    { status: 'ai_review', label: 'AI Review', icon: '🤖', featureKey: 'ai_review' },
+    { status: 'review_rejected', label: 'Review Rejected', icon: '🔄', featureKey: 'ai_review' },
+  ],
+};
+
+/**
+ * Build the dynamic status columns array based on enabled feature toggles.
+ * Full order with both features: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
+ */
+export function getStatusColumns(enabledFeatures: Record<FeatureKey, boolean>): StatusColumn[] {
+  const columns: StatusColumn[] = [];
+
+  for (const base of BASE_COLUMNS) {
+    // Insert refinement between Backlog and To Do
+    if (base.status === 'todo' && enabledFeatures.refinement) {
+      columns.push(...FEATURE_COLUMNS.refinement);
+    }
+
+    columns.push(base);
+
+    // Insert review_rejected between To Do and In Progress
+    if (base.status === 'todo' && enabledFeatures.ai_review) {
+      columns.push(FEATURE_COLUMNS.ai_review.find(c => c.status === 'review_rejected')!);
+    }
+
+    // Insert ai_review after In Progress
+    if (base.status === 'in_progress' && enabledFeatures.ai_review) {
+      columns.push(FEATURE_COLUMNS.ai_review.find(c => c.status === 'ai_review')!);
+    }
+  }
+
+  return columns;
+}
+
+/**
+ * Get the list of valid task statuses for a workspace based on enabled feature toggles.
+ */
+export function getValidStatuses(enabledFeatures: Record<FeatureKey, boolean>): TaskStatus[] {
+  return getStatusColumns(enabledFeatures).map(c => c.status);
+}

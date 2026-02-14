@@ -4,6 +4,28 @@
 
 ## Recent Changes
 
+### Dynamic Kanban Board Columns (feat: dynamic-kanban-columns)
+- **Updated** `packages/shared/src/types/index.ts`:
+  - Expanded `TaskStatus` type with new values: `refinement`, `ai_review`, `review_rejected`
+  - Added `StatusColumn` interface and `getStatusColumns()` utility that builds dynamic columns based on enabled feature toggles
+  - Added `getValidStatuses()` utility that returns valid statuses for a workspace
+  - Column insertion rules: `refinement` between Backlog/To Do, `review_rejected` between To Do/In Progress, `ai_review` after In Progress
+  - Full order: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
+- **Created** `packages/dashboard/migrations/011_dynamic_task_statuses.sql`:
+  - Recreates tasks table with expanded CHECK constraint for new status values
+  - Preserves all existing data and indexes
+- **Updated** `packages/dashboard/schema.sql` — Updated CHECK constraint for new statuses
+- **Refactored** `packages/dashboard/src/components/KanbanBoard.tsx`:
+  - Fetches feature toggles from `GET /api/feature-toggles` on mount
+  - Dynamically builds `statusColumns` array using `getStatusColumns()` from shared package
+  - Passes `statusColumns` to `TaskModal` for consistent status options
+- **Updated** `packages/dashboard/src/components/TaskModal.tsx`:
+  - Accepts optional `statusColumns` prop for dynamic status dropdown
+  - Falls back to default columns when prop not provided
+- **Updated** `packages/dashboard/src/app/api/tasks/[id]/route.ts`:
+  - PATCH endpoint now dynamically validates status values based on workspace's enabled feature toggles
+  - Queries `feature_toggles` table to determine valid statuses before validation
+
 ### Feature Toggle System (feat: feature-toggles)
 - **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table:
   - Fields: `id`, `workspace_id`, `feature_key`, `enabled`, `config` (JSON), `created_at`, `updated_at`
