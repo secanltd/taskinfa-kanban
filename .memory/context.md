@@ -4,6 +4,11 @@
 
 ## Recent Changes
 
+### Merge and Deploy (2026-02-13)
+- **Merged** PR #32 (Fix taskinfa update CLI self-update) into main
+- **Tagged** `orchestrator/v1.0.5` — triggers release workflow (orchestrator.js + taskinfa-cli.sh)
+- **Tagged** `deploy/test/2.0.14` — deploys dashboard to test environment
+- **Tagged** `deploy/prod/2.0.14` — deploys dashboard to production environment
 ### Fix version parsing in taskinfa doctor and update (fix: version-parsing)
 - **Fixed** `get_installed_version()` in `scripts/install.sh`:
   - Old regex `="(\d+\.\d+\.\d+)"` was too generic, matched first semver string in bundled file
