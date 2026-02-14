@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import type { Task, ListTasksRequest, CreateTaskRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getValidStatuses } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
@@ -36,11 +37,13 @@ async function getEnabledFeatures(db: ReturnType<typeof getDb>, workspaceId: str
 // GET /api/tasks - List tasks
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate
+    // Authenticate and rate limit
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { searchParams } = new URL(request.url);
 
@@ -115,11 +118,13 @@ export async function GET(request: NextRequest) {
 // POST /api/tasks - Create task
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate
+    // Authenticate and rate limit
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const body: CreateTaskRequest = await request.json();
     const { title, description, priority = 'medium', labels = [], task_list_id } = body;

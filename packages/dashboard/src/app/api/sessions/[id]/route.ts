@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, queryOne, execute } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import {
   createErrorResponse,
   authenticationError,
@@ -25,6 +26,8 @@ export async function GET(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { id } = await params;
     const db = getDb();
@@ -71,6 +74,8 @@ export async function PATCH(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { id } = await params;
     const body: UpdateSessionRequest = await request.json();

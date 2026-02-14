@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import type { Task } from '@taskinfa/shared';
 import {
   safeJsonParseArray,
@@ -22,11 +23,13 @@ export async function GET(request: NextRequest) {
   let workspaceId: string | undefined;
 
   try {
-    // Authenticate
+    // Authenticate and rate limit
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
     workspaceId = auth.workspaceId;
 
     const db = getDb();

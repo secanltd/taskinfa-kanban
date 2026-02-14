@@ -4,19 +4,15 @@ import { getDb, execute, queryOne } from '@/lib/db/client';
 import { hashPassword, validatePassword } from '@/lib/auth/password';
 import { validateEmail, normalizeEmail } from '@/lib/validations/auth';
 import { createSession, setSessionCookie } from '@/lib/auth/session';
-// Rate limiting is now handled at Cloudflare level (see RATE_LIMITING_IMPLEMENTATION.md)
-// import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
+import { rateLimitAuth, applyRateLimitHeaders } from '@/lib/middleware/apiRateLimit';
 import type { SignupRequest, SignupResponse, User, Workspace } from '@taskinfa/shared';
 import { createErrorResponse, validationError, conflictError, internalError } from '@/lib/utils';
 
 
 export async function POST(request: NextRequest) {
-  // Rate limiting - TEMPORARILY DISABLED (in-memory rate limiting doesn't work in Workers)
-  // TODO: Implement proper rate limiting using Cloudflare Rate Limiting API or Durable Objects
-  // const rateLimit = checkRateLimit(request, 'signup', RATE_LIMITS.SIGNUP);
-  // if (!rateLimit.allowed) {
-  //   return createRateLimitResponse(rateLimit.resetAt);
-  // }
+  // Per-IP rate limiting for signup (5 attempts/min)
+  const rl = await rateLimitAuth(request, 'signup');
+  if ('response' in rl) return rl.response;
 
   try {
     const body: SignupRequest = await request.json();
@@ -96,8 +92,9 @@ export async function POST(request: NextRequest) {
       workspace,
     };
 
-    // Set session cookie and return response
+    // Set session cookie and return response with rate limit headers
     const nextResponse = NextResponse.json(response, { status: 201 });
+    applyRateLimitHeaders(nextResponse, rl.result);
     return setSessionCookie(nextResponse, sessionToken);
 
   } catch (error) {

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import { nanoid } from 'nanoid';
 import {
   createErrorResponse,
@@ -23,6 +24,8 @@ export async function GET(request: NextRequest) {
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { searchParams } = new URL(request.url);
     const status = validateEnum(searchParams.get('status'), VALID_STATUSES, {
@@ -87,6 +90,8 @@ export async function POST(request: NextRequest) {
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const body: CreateSessionRequest = await request.json();
 

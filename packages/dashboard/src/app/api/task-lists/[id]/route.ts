@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import type { TaskList } from '@taskinfa/shared';
 import {
   createErrorResponse,
@@ -23,6 +24,8 @@ export async function GET(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
     const taskList = await query<TaskList>(
@@ -54,6 +57,8 @@ export async function PATCH(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
 
@@ -152,6 +157,8 @@ export async function DELETE(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
 

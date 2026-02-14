@@ -130,8 +130,15 @@ export async function authenticateRequest(request: Request): Promise<ApiKeyPaylo
   return await verifyApiKey(apiKey);
 }
 
+export interface UnifiedAuthResult {
+  userId?: string;
+  workspaceId: string;
+  keyId?: string;
+  authType: 'session' | 'apiKey';
+}
+
 // Unified authentication: supports both session cookies (web UI) and API keys (workers)
-export async function authenticateRequestUnified(request: Request): Promise<{ userId?: string; workspaceId: string } | null> {
+export async function authenticateRequestUnified(request: Request): Promise<UnifiedAuthResult | null> {
   // First, try session cookie authentication (for web UI)
   const cookieHeader = request.headers.get('cookie');
   if (cookieHeader) {
@@ -151,6 +158,7 @@ export async function authenticateRequestUnified(request: Request): Promise<{ us
         return {
           userId: session.userId,
           workspaceId: session.workspaceId,
+          authType: 'session',
         };
       }
     }
@@ -164,6 +172,8 @@ export async function authenticateRequestUnified(request: Request): Promise<{ us
     if (payload) {
       return {
         workspaceId: payload.workspaceId,
+        keyId: payload.keyId,
+        authType: 'apiKey',
       };
     }
   }
