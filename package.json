@@ -16,13 +16,18 @@
     "dashboard:dev": "npm run dev --workspace=packages/dashboard",
     "telegram:dev": "npm run dev --workspace=packages/telegram",
     "orchestrator": "npx tsx --env-file=.env scripts/orchestrator.ts",
-    "build:orchestrator": "node scripts/build-orchestrator.js"
+    "build:orchestrator": "node scripts/build-orchestrator.js",
+    "test": "npm run test --workspace=packages/dashboard",
+    "test:coverage": "npm run test:coverage --workspace=packages/dashboard",
+    "test:e2e": "npx playwright test"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
     "esbuild": "^0.25.12",
     "tsx": "^4.7.0",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18.0.0",
