@@ -1,35 +1,28 @@
 # Project Context
 
-## Last Updated: 2026-02-15
+## Last Updated: 2026-02-14
 
 ## Recent Changes
 
-### AI Review Feature in Orchestrator (feat: ai-review)
-- **Updated** `scripts/orchestrator.ts`:
-  - Added `FeatureToggle` interface, `getFeatureToggles()`, `isAiReviewEnabled()`, `getAiReviewConfig()` helpers
-  - Added `getTasksByStatus()` generic task fetcher, `parseRepoSlug()`, `parsePrNumber()` utilities
-  - Added `review_rounds` and `completion_notes` fields to `Task` interface, `labels` field
-  - Modified `startClaudeSession()` success handler: moves task to `ai_review` instead of `review` when toggle is ON
-  - Added `buildAiReviewPrompt()`, `buildFixReviewPrompt()`, `startAiReviewSession()`, `startFixReviewSession()`
-  - Updated `pollCycle()` with priority order: review_rejected > ai_review > todo
-  - Added `sortByPriority()` helper to deduplicate priority sorting logic
-  - AI review config: `max_review_rounds` (default 3), `auto_advance_on_approve` (default true)
+### Task Analytics and Productivity Dashboard (feat: analytics)
+- **Created** `packages/dashboard/src/app/api/analytics/route.ts` — New `GET /api/analytics` endpoint:
+  - Throughput: tasks completed per day/week/month with configurable period
+  - Cycle time: average hours from created to done, grouped by priority
+  - Status distribution: task count per status for donut chart
+  - Burndown: tasks remaining over time (last 90 days)
+  - Session analytics: total/completed/error/stuck sessions, avg duration, success rate, retry rate
+  - Bottleneck detection: tasks stuck in in_progress/review for >24 hours
+- **Created** `packages/dashboard/src/app/analytics/page.tsx` — New `/analytics` page with auth, header, navigation
+- **Created** `packages/dashboard/src/components/analytics/AnalyticsDashboard.tsx` — Client component with:
+  - Period selector (Daily/Weekly/Monthly)
+  - Session stats cards (total sessions, success rate, avg duration, avg retries)
+  - Throughput bar chart, status distribution donut chart, cycle time horizontal bars, burndown area chart
+  - Session performance breakdown, bottleneck detection table
+  - Uses recharts library for all visualizations
+- **Installed** `recharts` as a dependency
+- **Updated** `packages/dashboard/src/app/dashboard/page.tsx` — Added Analytics nav link
+- **Updated** `packages/dashboard/src/app/overview/page.tsx` — Added Analytics nav link
 
-### Dynamic Kanban Board Columns (feat: dynamic-kanban-columns)
-- **Updated** `packages/shared/src/types/index.ts`:
-  - Expanded `TaskStatus` type with new values: `refinement`, `ai_review`, `review_rejected`
-  - Added `StatusColumn` interface and `getStatusColumns()` utility
-  - Added `getValidStatuses()` utility
-  - Full order: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
-- **Created** `packages/dashboard/migrations/011_dynamic_task_statuses.sql`
-- **Updated** KanbanBoard, TaskModal, and tasks API routes for dynamic statuses
-
-### Feature Toggle System (feat: feature-toggles)
-- **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table
-- **Created** `GET /api/feature-toggles` and `PATCH /api/feature-toggles/:feature_key` routes
-- **Updated** `packages/shared/src/types/index.ts` — Added feature toggle types:
-  - `FeatureKey`, `FeatureToggle`, `RefinementConfig`, `AiReviewConfig`, `FeatureConfigMap`
-  - `DEFAULT_FEATURE_CONFIGS` constant with default configs for each feature
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
 - **Updated** `packages/dashboard/src/app/layout.tsx` - Added separate viewport export for mobile viewport settings
@@ -94,3 +87,4 @@
 - Mobile-first responsive design with Tailwind breakpoints (sm: 640px, md: 768px)
 - Bottom sheet modal pattern on mobile devices
 - Dual card/table layouts for data-heavy views on mobile vs desktop
+- recharts library used for analytics charts (bar, pie, area, line)

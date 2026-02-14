@@ -89,6 +89,12 @@ export default async function DashboardPage() {
                 Overview
               </a>
               <a
+                href="/analytics"
+                className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
+              >
+                Analytics
+              </a>
+              <a
                 href="/projects"
                 className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors"
               >
@@ -108,6 +114,7 @@ export default async function DashboardPage() {
               links={[
                 { href: '/dashboard', label: 'Board', active: true },
                 { href: '/overview', label: 'Overview' },
+                { href: '/analytics', label: 'Analytics' },
                 { href: '/projects', label: 'Projects' },
                 { href: '/settings', label: 'Settings' },
               ]}
