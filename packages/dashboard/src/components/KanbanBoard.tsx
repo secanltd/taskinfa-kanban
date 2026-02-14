@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import type { Task, TaskList, TaskStatus, TaskPriority, SessionWithDetails, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import type { Task, TaskList, TaskStatus, TaskPriority, TaskFilters, SavedFilter, SessionWithDetails, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getStatusColumns } from '@taskinfa/shared';
 import { useTaskStream } from '@/hooks/useTaskStream';
 import TaskCard from './TaskCard';
@@ -9,20 +10,148 @@ import TaskModal from './TaskModal';
 import SessionsPanel from './SessionsPanel';
 import CreateTaskModal from './CreateTaskModal';
 import BulkActionBar from './BulkActionBar';
+import TaskFilterToolbar from './TaskFilterToolbar';
 
 interface KanbanBoardProps {
   initialTasks: Task[];
   taskLists: TaskList[];
 }
 
+
+const FILTER_KEYS: (keyof TaskFilters)[] = [
+  'q', 'status', 'priority', 'task_list_id', 'label',
+  'assignee', 'created_after', 'created_before', 'sort', 'order',
+];
+
+function parseFiltersFromParams(params: URLSearchParams): TaskFilters {
+  const filters: TaskFilters = {};
+  for (const key of FILTER_KEYS) {
+    const val = params.get(key);
+    if (val) {
+      (filters as Record<string, string>)[key] = val;
+    }
+  }
+  return filters;
+}
+
+function filtersToParams(filters: TaskFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const key of FILTER_KEYS) {
+    const val = filters[key];
+    if (val) params.set(key, val);
+  }
+  return params;
+}
+
 export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [filteredTasks, setFilteredTasks] = useState<Task[] | null>(null);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isSessionsPanelOpen, setIsSessionsPanelOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+
+  // Parse filters from URL on mount
+  const [filters, setFilters] = useState<TaskFilters>(() => parseFiltersFromParams(searchParams));
+
+  // Extract all unique labels from tasks
+  const allLabels = useMemo(() => {
+    const labelSet = new Set<string>();
+    tasks.forEach((t) => {
+      if (t.labels) t.labels.forEach((l) => labelSet.add(l));
+    });
+    return Array.from(labelSet).sort();
+  }, [tasks]);
+
+  // Check if any filters are active (that require API call)
+  const hasActiveFilters = useMemo(() => {
+    return Boolean(filters.q || filters.priority || filters.status || filters.task_list_id ||
+      filters.label || filters.assignee || filters.created_after || filters.created_before ||
+      (filters.sort && filters.sort !== 'order'));
+  }, [filters]);
+
+  // Fetch filtered tasks from API when filters change
+  useEffect(() => {
+    if (!hasActiveFilters) {
+      setFilteredTasks(null);
+      setIsFiltering(false);
+      return;
+    }
+
+    setIsFiltering(true);
+    const params = filtersToParams(filters);
+    params.set('limit', '100');
+
+    const controller = new AbortController();
+    fetch(`/api/tasks?${params.toString()}`, { signal: controller.signal })
+      .then((res) => res.json() as Promise<{ tasks: Task[] }>)
+      .then((data) => {
+        setFilteredTasks(data.tasks);
+        setIsFiltering(false);
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('Error fetching filtered tasks:', err);
+          setIsFiltering(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [filters, hasActiveFilters]);
+
+  // Sync filters to URL
+  useEffect(() => {
+    const params = filtersToParams(filters);
+    const newSearch = params.toString();
+    const currentSearch = searchParams.toString();
+    if (newSearch !== currentSearch) {
+      router.replace(`/dashboard${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
+    }
+  }, [filters]); // router/searchParams intentionally excluded - only sync on filter changes
+
+  // Load saved filters
+  useEffect(() => {
+    fetch('/api/saved-filters')
+      .then((res) => res.json() as Promise<{ filters: SavedFilter[] }>)
+      .then((data) => setSavedFilters(data.filters || []))
+      .catch(() => {});
+  }, []);
+
+  const handleFiltersChange = useCallback((newFilters: TaskFilters) => {
+    setFilters(newFilters);
+  }, []);
+
+  const handleSaveFilter = useCallback(async (name: string) => {
+    try {
+      const res = await fetch('/api/saved-filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, filters }),
+      });
+      const data = await res.json() as { filter?: SavedFilter };
+      if (data.filter) {
+        setSavedFilters((prev) => [data.filter!, ...prev]);
+      }
+    } catch (err) {
+      console.error('Error saving filter:', err);
+    }
+  }, [filters]);
+
+  const handleDeleteSavedFilter = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/saved-filters/${id}`, { method: 'DELETE' });
+      setSavedFilters((prev) => prev.filter((f) => f.id !== id));
+    } catch (err) {
+      console.error('Error deleting filter:', err);
+    }
+  }, []);
 
   // Feature toggles for dynamic columns
   const [enabledFeatures, setEnabledFeatures] = useState<Record<FeatureKey, boolean>>({
@@ -68,7 +197,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   }, []);
 
   // SSE hook for real-time updates
-  const { sessions, sessionStats, connected, onlineCount, workingCount, reconnect } = useTaskStream({
+  const { sessions, sessionStats, connected, onlineCount, reconnect } = useTaskStream({
     onTasksUpdated: handleTasksUpdated,
     enabled: true,
   });
@@ -78,8 +207,10 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
     return sessions.find(s => s.current_task_id === taskId && s.status === 'active');
   };
 
+  const displayTasks = filteredTasks ?? tasks;
+
   const getTasksByStatus = (status: TaskStatus) => {
-    return tasks.filter((task) => task.status === status).sort((a, b) => a.order - b.order);
+    return displayTasks.filter((task) => task.status === status).sort((a, b) => a.order - b.order);
   };
 
   const handleDragStart = (task: Task) => {
@@ -381,6 +512,24 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         </div>
       )}
 
+      {/* Search/Filter Toolbar */}
+      <TaskFilterToolbar
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        taskLists={taskLists}
+        allLabels={allLabels}
+        savedFilters={savedFilters}
+        onSaveFilter={handleSaveFilter}
+        onDeleteSavedFilter={handleDeleteSavedFilter}
+      />
+
+      {/* Loading indicator for filtered results */}
+      {isFiltering && (
+        <div className="text-center py-2 text-sm text-terminal-muted">
+          Searching...
+        </div>
+      )}
+
       {/* Kanban Board - Full Width with Horizontal Scroll */}
       <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-thin -mx-3 px-3 sm:mx-0 sm:px-0">
         {statusColumns.map((column) => {
@@ -428,7 +577,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
               <div
                 className={`
                   bg-terminal-bg rounded-b-lg border border-terminal-border border-t-0
-                  min-h-[calc(100vh-320px)] p-2 sm:p-3 space-y-2 sm:space-y-3 transition-all duration-150
+                  min-h-[calc(100vh-380px)] p-2 sm:p-3 space-y-2 sm:space-y-3 transition-all duration-150
                   ${isDragOver ? 'ring-2 ring-terminal-blue ring-inset bg-terminal-blue/5' : ''}
                 `}
                 onDragOver={(e) => handleDragOver(e, column.status)}
@@ -469,7 +618,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
                       : 'border-terminal-border text-terminal-muted'
                     }
                   `}>
-                    {isDragOver ? 'Drop here' : 'No tasks'}
+                    {isDragOver ? 'Drop here' : hasActiveFilters ? 'No matches' : 'No tasks'}
                   </div>
                 )}
               </div>

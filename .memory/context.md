@@ -4,25 +4,27 @@
 
 ## Recent Changes
 
-### Batch Operations for Tasks (feat: batch-operations)
-- **Created** `packages/shared/src/types/index.ts` — Added `BulkUpdateTasksRequest`, `BulkUpdateTasksResponse`, `BulkDeleteTasksRequest`, `BulkDeleteTasksResponse` types
-- **Created** `packages/dashboard/src/app/api/tasks/bulk/route.ts` — New API route:
-  - `PATCH /api/tasks/bulk` — Bulk update tasks (status, priority, labels, assigned_to) with IN clause query, max 50 tasks
-  - `DELETE /api/tasks/bulk` — Bulk delete tasks with confirmation, max 50 tasks
-  - Both routes validate task_ids array and workspace ownership
-- **Created** `packages/dashboard/src/components/BulkActionBar.tsx` — Floating action bar component:
-  - Shows selected count, Move (dropdown with all 5 status columns), Priority (dropdown), Delete (with inline confirmation)
-  - Fixed to bottom center of viewport, appears when tasks are selected
-- **Updated** `packages/dashboard/src/components/TaskCard.tsx` — Added selection mode support:
-  - New props: `selectionMode`, `isSelected`, `onToggleSelect`
-  - Checkbox overlay in top-left when in selection mode
-  - Blue ring highlight for selected cards
-  - Drag disabled in selection mode, click toggles selection
-- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx` — Added selection mode orchestration:
-  - "Select" toggle button in toolbar header
-  - Select All per column checkbox in column headers
-  - Bulk move, bulk edit (priority), and bulk delete handlers with optimistic updates
-  - Selection state cleared after bulk operations complete
+### Task Search, Filtering, and Sorting (feat: task-search-filtering)
+- **Created** `packages/dashboard/migrations/011_task_search_and_saved_filters.sql` — FTS5 virtual table `tasks_fts` for full-text search across title/description/labels, with insert/update/delete triggers to keep index in sync; `saved_filters` table for persisting user filter presets
+- **Updated** `packages/dashboard/src/app/api/tasks/route.ts` — Extended GET endpoint with `q` (FTS5 search), `label`, `assignee`, `created_after`, `created_before`, `sort` (created_at/updated_at/priority/title/order), `order` (asc/desc) query parameters
+- **Created** `packages/dashboard/src/app/api/saved-filters/route.ts` — GET (list) and POST (create) endpoints for saved filters
+- **Created** `packages/dashboard/src/app/api/saved-filters/[id]/route.ts` — DELETE endpoint for saved filters
+- **Created** `packages/dashboard/src/components/TaskFilterToolbar.tsx` — Search bar with debounced input, filter panel dropdown (status, priority, project, label, date range), sort controls, active filter badges, saved filter management
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx` — Integrated TaskFilterToolbar, added client-side filtered task fetching via API, URL-based filter persistence via `useSearchParams`/`useRouter`, saved filters CRUD
+- **Updated** `packages/dashboard/src/app/dashboard/page.tsx` — Added Suspense wrapper for KanbanBoard (required by useSearchParams)
+- **Updated** `packages/shared/src/types/index.ts` — Added `TaskFilters`, `TaskSortField`, `SortOrder`, `SavedFilter` types; extended `ListTasksRequest` with new filter/sort fields
+- **Migration required**: `npm run db:migrate:test -- --file=./migrations/011_task_search_and_saved_filters.sql`
+
+### API Rate Limiting and Abuse Protection (feat: rate-limiting) — PR #44
+- **Created** `packages/dashboard/migrations/010_rate_limit.sql` — D1 table `rate_limit_entries` for sliding window tracking
+- **Rewritten** `packages/dashboard/src/lib/middleware/rateLimit.ts` — D1-based sliding window rate limiter (replaces non-functional in-memory version)
+- **Created** `packages/dashboard/src/lib/middleware/apiRateLimit.ts` — Higher-level helpers: `rateLimitApi()`, `rateLimitAuth()`, `applyRateLimitHeaders()`
+- **Updated** `packages/dashboard/src/lib/auth/jwt.ts` — `authenticateRequestUnified` now returns `keyId`, `authType` in `UnifiedAuthResult` interface
+- **Updated** all API route handlers — Integrated D1-based rate limiting after authentication
+- **Rate limit tiers**: Login 10/min (IP), Signup 5/min (IP), API key creation 10/hr (session), Standard API 100/min (per-key), Orchestrator 1000/min (config ready)
+- **Headers**: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset on all responses; Retry-After on 429
+- **Design**: Fail-open (if rate limit check fails, request proceeds), opportunistic cleanup (~5% of requests)
+- **Migration required**: `npm run db:migrate:test -- --file=./migrations/010_rate_limit.sql`
 
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
@@ -82,6 +84,8 @@
 - All modals now share consistent backdrop, keyboard handling, scroll lock, and styling
 
 ## Architecture Notes
+- Rate limiting uses D1 sliding window (not in-memory, which doesn't work in stateless Workers)
+- Rate limit keys: `ip:<ip>:<endpoint>` for auth, `apikey:<keyId>` for API, `session:<userId>:<endpoint>` for session-based
 - No external modal library used - pure React + Tailwind CSS
 - Terminal dark theme with CSS custom properties (--terminal-*)
 - Custom CSS utility classes: btn-primary, btn-secondary, btn-danger, input-field, card

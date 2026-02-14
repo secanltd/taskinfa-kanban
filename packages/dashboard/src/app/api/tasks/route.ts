@@ -73,26 +73,115 @@ export async function GET(request: NextRequest) {
       max: 100,
       defaultValue: 50,
     });
-    let sql = 'SELECT * FROM tasks WHERE workspace_id = ?';
-    const params: string[] = [auth.workspaceId];
+
+    // Search query (full-text search)
+    const q = validateString(searchParams.get('q'), {
+      fieldName: 'q',
+      required: false,
+      maxLength: 200,
+    });
+
+    // Label filter
+    const label = validateString(searchParams.get('label'), {
+      fieldName: 'label',
+      required: false,
+      maxLength: 100,
+    });
+
+    // Assignee filter
+    const assignee = validateString(searchParams.get('assignee'), {
+      fieldName: 'assignee',
+      required: false,
+      maxLength: 200,
+    });
+
+    // Date range filters
+    const created_after = validateString(searchParams.get('created_after'), {
+      fieldName: 'created_after',
+      required: false,
+    });
+    const created_before = validateString(searchParams.get('created_before'), {
+      fieldName: 'created_before',
+      required: false,
+    });
+
+    // Sort options
+    const sort = validateEnum(searchParams.get('sort'),
+      ['created_at', 'updated_at', 'priority', 'title', 'order'] as const,
+      { fieldName: 'sort', required: false, defaultValue: 'order' }
+    );
+
+    const order = validateEnum(searchParams.get('order'),
+      ['asc', 'desc'] as const,
+      { fieldName: 'order', required: false, defaultValue: 'asc' }
+    );
+
+    let sql = 'SELECT tasks.* FROM tasks';
+    const params: (string | number)[] = [];
+
+    // Join FTS table if search query provided
+    if (q) {
+      sql += ' INNER JOIN tasks_fts ON tasks.id = tasks_fts.task_id';
+      sql += ' WHERE tasks_fts MATCH ?';
+      const ftsQuery = q.replace(/['"*()^~:]/g, ' ').trim().split(/\s+/).map(w => `"${w}"*`).join(' ');
+      params.push(ftsQuery);
+      sql += ' AND tasks.workspace_id = ?';
+    } else {
+      sql += ' WHERE tasks.workspace_id = ?';
+    }
+    params.push(auth.workspaceId);
 
     if (task_list_id) {
-      sql += ' AND task_list_id = ?';
+      sql += ' AND tasks.task_list_id = ?';
       params.push(task_list_id);
     }
 
     if (status) {
-      sql += ' AND status = ?';
+      sql += ' AND tasks.status = ?';
       params.push(status);
     }
 
     if (priority) {
-      sql += ' AND priority = ?';
+      sql += ' AND tasks.priority = ?';
       params.push(priority);
     }
 
-    sql += ' ORDER BY "order" ASC, created_at ASC LIMIT ?';
-    params.push(String(limit));
+    if (label) {
+      sql += ' AND tasks.labels LIKE ?';
+      params.push(`%${label}%`);
+    }
+
+    if (assignee) {
+      sql += ' AND (tasks.assignee = ? OR tasks.assigned_to = ?)';
+      params.push(assignee, assignee);
+    }
+
+    if (created_after) {
+      sql += ' AND tasks.created_at >= ?';
+      params.push(created_after);
+    }
+
+    if (created_before) {
+      sql += ' AND tasks.created_at <= ?';
+      params.push(created_before);
+    }
+
+    // Sort handling
+    const priorityOrder = "CASE tasks.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
+    const sortDir = order === 'desc' ? 'DESC' : 'ASC';
+
+    if (sort === 'priority') {
+      sql += ` ORDER BY ${priorityOrder} ${sortDir}, tasks."order" ASC`;
+    } else if (sort === 'order') {
+      sql += ` ORDER BY tasks."order" ASC, tasks.created_at ASC`;
+    } else if (sort === 'title') {
+      sql += ` ORDER BY tasks.title ${sortDir}`;
+    } else {
+      sql += ` ORDER BY tasks.${sort} ${sortDir}`;
+    }
+
+    sql += ' LIMIT ?';
+    params.push(limit);
 
     const tasks = await query<Task>(db, sql, params);
 
