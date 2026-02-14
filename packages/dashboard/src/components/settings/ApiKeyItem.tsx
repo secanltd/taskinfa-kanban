@@ -14,9 +14,10 @@ interface ApiKeyItemProps {
   };
   onDeleted: () => void;
   onUpdated: () => void;
+  variant?: 'row' | 'card';
 }
 
-export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemProps) {
+export default function ApiKeyItem({ apiKey, onDeleted, onUpdated, variant = 'row' }: ApiKeyItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(apiKey.name);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -108,6 +109,114 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
     }
   };
 
+  const deleteConfirmContent = (
+    <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-4">
+      <p className="text-sm text-terminal-red font-medium mb-2">
+        Revoke API key &quot;{apiKey.name}&quot;?
+      </p>
+      <p className="text-sm text-terminal-muted mb-4">
+        This action cannot be undone. The key will stop working immediately.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="btn-danger"
+        >
+          {isDeleting ? 'Revoking...' : 'Yes, revoke key'}
+        </button>
+        <button
+          onClick={() => setShowDeleteConfirm(false)}
+          disabled={isDeleting}
+          className="btn-secondary"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  // Card variant for mobile
+  if (variant === 'card') {
+    return (
+      <div className={`bg-terminal-bg border border-terminal-border rounded-lg p-4 space-y-3 ${isDeleting ? 'opacity-50' : ''}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {isEditing ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  className="input-field text-sm w-full"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRename();
+                    if (e.key === 'Escape') {
+                      setIsEditing(false);
+                      setEditedName(apiKey.name);
+                    }
+                  }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleRename}
+                    disabled={isSaving}
+                    className="text-xs text-terminal-green hover:text-green-400 font-medium transition-colors touch-manipulation px-2 py-1"
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditedName(apiKey.name);
+                      setError(null);
+                    }}
+                    className="text-xs text-terminal-muted hover:text-terminal-text transition-colors touch-manipulation px-2 py-1"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm font-medium text-terminal-text">{apiKey.name}</div>
+            )}
+            {error && <p className="text-xs text-terminal-red mt-1">{error}</p>}
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            {!isEditing && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-xs text-terminal-blue hover:text-blue-400 transition-colors touch-manipulation px-2 py-1"
+              >
+                Rename
+              </button>
+            )}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              className="text-xs text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 touch-manipulation px-2 py-1"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+
+        <code className="text-xs text-terminal-muted bg-terminal-surface px-2 py-1 rounded font-mono block truncate">
+          {apiKey.key_preview}
+        </code>
+
+        <div className="flex items-center gap-4 text-xs text-terminal-muted">
+          <span>Used: {formatDate(apiKey.last_used_at)}</span>
+          <span>Created: {formatDate(apiKey.created_at)}</span>
+        </div>
+
+        {showDeleteConfirm && deleteConfirmContent}
+      </div>
+    );
+  }
+
+  // Row variant for desktop table
   return (
     <>
       <tr className={`${isDeleting ? 'opacity-50' : ''} hover:bg-terminal-surface-hover transition-colors`}>
@@ -187,31 +296,7 @@ export default function ApiKeyItem({ apiKey, onDeleted, onUpdated }: ApiKeyItemP
       {showDeleteConfirm && (
         <tr>
           <td colSpan={5} className="px-4 py-4">
-            <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-4">
-              <p className="text-sm text-terminal-red font-medium mb-2">
-                Revoke API key &quot;{apiKey.name}&quot;?
-              </p>
-              <p className="text-sm text-terminal-muted mb-4">
-                This action cannot be undone. The key will stop working immediately and any bots
-                using it will lose access.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="btn-danger"
-                >
-                  {isDeleting ? 'Revoking...' : 'Yes, revoke key'}
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={isDeleting}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+            {deleteConfirmContent}
           </td>
         </tr>
       )}

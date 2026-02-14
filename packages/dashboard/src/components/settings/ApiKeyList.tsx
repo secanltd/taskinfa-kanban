@@ -58,21 +58,22 @@ export default function ApiKeyList() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
         <div>
           <h2 className="text-lg font-semibold text-terminal-text">API Keys</h2>
-          <p className="text-sm text-terminal-muted mt-1">
+          <p className="text-xs sm:text-sm text-terminal-muted mt-1">
             Manage API keys for bot authentication
           </p>
         </div>
         <button
           onClick={() => setIsCreateDialogOpen(true)}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 self-start sm:self-auto"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Generate New Key
+          <span className="hidden sm:inline">Generate New Key</span>
+          <span className="sm:hidden">New Key</span>
         </button>
       </div>
 
@@ -96,39 +97,56 @@ export default function ApiKeyList() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-terminal-border">
-          <table className="min-w-full divide-y divide-terminal-border">
-            <thead className="bg-terminal-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Key Preview
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Last Used
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-terminal-border">
-              {keys.map((key) => (
-                <ApiKeyItem
-                  key={key.id}
-                  apiKey={key}
-                  onDeleted={handleKeyDeleted}
-                  onUpdated={handleKeyUpdated}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile: Card layout */}
+          <div className="space-y-3 md:hidden">
+            {keys.map((key) => (
+              <ApiKeyItem
+                key={key.id}
+                apiKey={key}
+                onDeleted={handleKeyDeleted}
+                onUpdated={handleKeyUpdated}
+                variant="card"
+              />
+            ))}
+          </div>
+
+          {/* Desktop: Table layout */}
+          <div className="hidden md:block overflow-x-auto rounded-lg border border-terminal-border">
+            <table className="min-w-full divide-y divide-terminal-border">
+              <thead className="bg-terminal-bg">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Key Preview
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Last Used
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-terminal-border">
+                {keys.map((key) => (
+                  <ApiKeyItem
+                    key={key.id}
+                    apiKey={key}
+                    onDeleted={handleKeyDeleted}
+                    onUpdated={handleKeyUpdated}
+                    variant="row"
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {isCreateDialogOpen && (

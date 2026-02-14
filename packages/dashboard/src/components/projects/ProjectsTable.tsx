@@ -191,82 +191,127 @@ export default function ProjectsTable({ initialProjects }: Props) {
           </button>
         </div>
       ) : projects.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-terminal-border">
-          <table className="min-w-full divide-y divide-terminal-border">
-            <thead className="bg-terminal-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Project ID
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Repository
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Tasks
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-terminal-border">
-              {projects.map((project) => (
-                <tr key={project.id} className="hover:bg-terminal-surface-hover transition-colors">
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <code className="text-sm bg-terminal-bg px-2 py-1 rounded text-terminal-text font-mono">
-                      {project.id}
-                    </code>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-terminal-text">
-                      {project.name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-terminal-muted max-w-xs truncate">
-                      {project.description || '-'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    {project.repository_url ? (
-                      <a
-                        href={project.repository_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-terminal-blue hover:text-blue-400 max-w-xs truncate block transition-colors"
-                      >
-                        {project.repository_url}
-                      </a>
-                    ) : (
-                      <span className="text-sm text-terminal-muted">No repo</span>
+        <>
+          {/* Mobile: Card layout */}
+          <div className="space-y-3 md:hidden">
+            {projects.map((project) => (
+              <div key={project.id} className="bg-terminal-bg border border-terminal-border rounded-lg p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-terminal-text">{project.name}</div>
+                    {project.description && (
+                      <div className="text-xs text-terminal-muted mt-1 line-clamp-2">{project.description}</div>
                     )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-sm text-terminal-text bg-terminal-bg px-2 py-1 rounded">
-                      {project.task_count}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => handleDelete(project.id)}
-                      className="text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={loading || project.task_count > 0}
-                      title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
-                    >
-                      Delete
-                    </button>
-                  </td>
+                  </div>
+                  <span className="text-sm text-terminal-text bg-terminal-surface px-2 py-0.5 rounded flex-shrink-0">
+                    {project.task_count} task{project.task_count !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {project.repository_url && (
+                  <a
+                    href={project.repository_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-terminal-blue hover:text-blue-400 truncate block transition-colors"
+                  >
+                    {project.repository_url}
+                  </a>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t border-terminal-border">
+                  <code className="text-xs bg-terminal-surface px-2 py-0.5 rounded text-terminal-muted font-mono truncate max-w-[200px]">
+                    {project.id}
+                  </code>
+                  <button
+                    onClick={() => handleDelete(project.id)}
+                    className="text-xs text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation px-2 py-1"
+                    disabled={loading || project.task_count > 0}
+                    title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: Table layout */}
+          <div className="hidden md:block overflow-x-auto rounded-lg border border-terminal-border">
+            <table className="min-w-full divide-y divide-terminal-border">
+              <thead className="bg-terminal-bg">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Project ID
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Repository
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Tasks
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-terminal-border">
+                {projects.map((project) => (
+                  <tr key={project.id} className="hover:bg-terminal-surface-hover transition-colors">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <code className="text-sm bg-terminal-bg px-2 py-1 rounded text-terminal-text font-mono">
+                        {project.id}
+                      </code>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-terminal-text">
+                        {project.name}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-terminal-muted max-w-xs truncate">
+                        {project.description || '-'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {project.repository_url ? (
+                        <a
+                          href={project.repository_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-terminal-blue hover:text-blue-400 max-w-xs truncate block transition-colors"
+                        >
+                          {project.repository_url}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-terminal-muted">No repo</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sm text-terminal-text bg-terminal-bg px-2 py-1 rounded">
+                        {project.task_count}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => handleDelete(project.id)}
+                        className="text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={loading || project.task_count > 0}
+                        title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

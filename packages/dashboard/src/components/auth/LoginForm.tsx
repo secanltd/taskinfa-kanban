@@ -68,8 +68,8 @@ export default function LoginForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="card px-8 py-10">
-        <h2 className="text-2xl font-bold text-terminal-text mb-6 text-center">
+      <div className="card px-5 sm:px-8 py-8 sm:py-10">
+        <h2 className="text-xl sm:text-2xl font-bold text-terminal-text mb-6 text-center">
           Log in to Kanban
         </h2>
 

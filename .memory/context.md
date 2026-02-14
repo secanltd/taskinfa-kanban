@@ -4,11 +4,31 @@
 
 ## Recent Changes
 
+### Responsive Design Improvement (feat: responsive-design)
+- **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
+- **Updated** `packages/dashboard/src/app/layout.tsx` - Added separate viewport export for mobile viewport settings
+- **Updated** `packages/dashboard/src/app/globals.css` - Touch-friendly button/input classes (min-h-[44px], touch-manipulation, text-base on mobile inputs to prevent iOS zoom)
+- **Updated** `packages/dashboard/src/app/dashboard/page.tsx` - Added MobileNav, responsive padding/font sizes, hidden desktop nav on mobile
+- **Updated** `packages/dashboard/src/app/overview/page.tsx` - Added MobileNav, responsive stats cards
+- **Updated** `packages/dashboard/src/app/settings/page.tsx` - Responsive header, padding, break-all for long workspace IDs
+- **Updated** `packages/dashboard/src/app/projects/page.tsx` - Responsive header with compact back button
+- **Updated** `packages/dashboard/src/app/auth/login/page.tsx` and `signup/page.tsx` - Responsive header/footer padding
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx` - Responsive columns (260px mobile, 288px desktop), flex-wrap header, touch-friendly session button
+- **Updated** `packages/dashboard/src/components/Modal.tsx` - Bottom sheet pattern on mobile (slides up from bottom), responsive padding
+- **Updated** `packages/dashboard/src/components/CreateTaskModal.tsx` - Single-column grid on mobile, responsive priority buttons
+- **Updated** `packages/dashboard/src/components/TaskModal.tsx` - Responsive grids, touch-friendly edit/delete buttons
+- **Updated** `packages/dashboard/src/components/SessionsPanel.tsx` - Responsive max-height
+- **Updated** `packages/dashboard/src/components/projects/ProjectsTable.tsx` - Dual layout: card view on mobile, table on desktop
+- **Updated** `packages/dashboard/src/components/settings/ApiKeyList.tsx` - Dual layout: card view on mobile, table on desktop
+- **Updated** `packages/dashboard/src/components/settings/ApiKeyItem.tsx` - Added card/row variant prop for mobile/desktop
+- **Updated** `packages/dashboard/src/components/auth/LoginForm.tsx` and `SignupForm.tsx` - Responsive card padding and heading sizes
+
 ### Merge and Deploy (2026-02-13)
 - **Merged** PR #32 (Fix taskinfa update CLI self-update) into main
 - **Tagged** `orchestrator/v1.0.5` — triggers release workflow (orchestrator.js + taskinfa-cli.sh)
 - **Tagged** `deploy/test/2.0.14` — deploys dashboard to test environment
 - **Tagged** `deploy/prod/2.0.14` — deploys dashboard to production environment
+
 ### Fix version parsing in taskinfa doctor and update (fix: version-parsing)
 - **Fixed** `get_installed_version()` in `scripts/install.sh`:
   - Old regex `="(\d+\.\d+\.\d+)"` was too generic, matched first semver string in bundled file
@@ -45,3 +65,6 @@
 - No external modal library used - pure React + Tailwind CSS
 - Terminal dark theme with CSS custom properties (--terminal-*)
 - Custom CSS utility classes: btn-primary, btn-secondary, btn-danger, input-field, card
+- Mobile-first responsive design with Tailwind breakpoints (sm: 640px, md: 768px)
+- Bottom sheet modal pattern on mobile devices
+- Dual card/table layouts for data-heavy views on mobile vs desktop

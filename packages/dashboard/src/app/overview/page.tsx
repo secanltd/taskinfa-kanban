@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getDb, query } from '@/lib/db/client';
 import { verifySessionToken } from '@/lib/auth/session';
 import LogoutButton from '@/components/auth/LogoutButton';
+import MobileNav from '@/components/MobileNav';
 import type { TaskList, User } from '@taskinfa/shared';
 
 export const dynamic = 'force-dynamic';
@@ -127,21 +128,21 @@ export default async function OverviewPage() {
   return (
     <div className="min-h-screen bg-terminal-bg">
       {/* Header */}
-      <header className="bg-terminal-surface border-b border-terminal-border">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
+      <header className="bg-terminal-surface border-b border-terminal-border relative">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">⚡</span>
-                <h1 className="text-xl font-bold text-terminal-text">Overview</h1>
-                <span className="text-sm text-terminal-muted">by Taskinfa</span>
+                <span className="text-xl sm:text-2xl">⚡</span>
+                <h1 className="text-lg sm:text-xl font-bold text-terminal-text">Overview</h1>
+                <span className="text-xs sm:text-sm text-terminal-muted hidden sm:inline">by Taskinfa</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-terminal-muted hidden md:block">
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-sm text-terminal-muted">
                 {user[0].name || user[0].email}
               </span>
-              <div className="h-4 w-px bg-terminal-border hidden md:block" />
+              <div className="h-4 w-px bg-terminal-border" />
               <a href="/dashboard" className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors">
                 Board
               </a>
@@ -153,28 +154,37 @@ export default async function OverviewPage() {
               </a>
               <LogoutButton />
             </div>
+            <MobileNav
+              links={[
+                { href: '/overview', label: 'Overview', active: true },
+                { href: '/dashboard', label: 'Board' },
+                { href: '/projects', label: 'Projects' },
+                { href: '/settings', label: 'Settings' },
+              ]}
+              userName={user[0].name || user[0].email}
+            />
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6">
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Global Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
-            <div className="text-2xl font-bold text-terminal-blue">{totalActive}</div>
-            <div className="text-sm text-terminal-muted">Active Sessions</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-3 sm:p-4">
+            <div className="text-xl sm:text-2xl font-bold text-terminal-blue">{totalActive}</div>
+            <div className="text-xs sm:text-sm text-terminal-muted">Active Sessions</div>
           </div>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
-            <div className="text-2xl font-bold text-terminal-amber">{totalStuck}</div>
-            <div className="text-sm text-terminal-muted">Stuck</div>
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-3 sm:p-4">
+            <div className="text-xl sm:text-2xl font-bold text-terminal-amber">{totalStuck}</div>
+            <div className="text-xs sm:text-sm text-terminal-muted">Stuck</div>
           </div>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
-            <div className="text-2xl font-bold text-terminal-green">{totalTodo}</div>
-            <div className="text-sm text-terminal-muted">Tasks Pending</div>
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-3 sm:p-4">
+            <div className="text-xl sm:text-2xl font-bold text-terminal-green">{totalTodo}</div>
+            <div className="text-xs sm:text-sm text-terminal-muted">Tasks Pending</div>
           </div>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
-            <div className="text-2xl font-bold text-terminal-purple">{totalInProgress}</div>
-            <div className="text-sm text-terminal-muted">In Progress</div>
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-3 sm:p-4">
+            <div className="text-xl sm:text-2xl font-bold text-terminal-purple">{totalInProgress}</div>
+            <div className="text-xs sm:text-sm text-terminal-muted">In Progress</div>
           </div>
         </div>
 

@@ -62,19 +62,22 @@ body {
 
 @layer components {
   .btn-primary {
-    @apply bg-terminal-green text-terminal-bg font-medium px-4 py-2 rounded-lg
-           hover:bg-green-400 transition-colors duration-150;
+    @apply bg-terminal-green text-terminal-bg font-medium px-4 py-2.5 rounded-lg
+           hover:bg-green-400 transition-colors duration-150 text-sm
+           min-h-[44px] touch-manipulation;
   }
 
   .btn-secondary {
     @apply bg-terminal-surface text-terminal-text border border-terminal-border
-           font-medium px-4 py-2 rounded-lg hover:bg-terminal-surface-hover
-           hover:border-terminal-border-hover transition-colors duration-150;
+           font-medium px-4 py-2.5 rounded-lg hover:bg-terminal-surface-hover
+           hover:border-terminal-border-hover transition-colors duration-150 text-sm
+           min-h-[44px] touch-manipulation;
   }
 
   .btn-danger {
-    @apply bg-terminal-red text-white font-medium px-4 py-2 rounded-lg
-           hover:bg-red-400 transition-colors duration-150;
+    @apply bg-terminal-red text-white font-medium px-4 py-2.5 rounded-lg
+           hover:bg-red-400 transition-colors duration-150 text-sm
+           min-h-[44px] touch-manipulation;
   }
 
   .card {
@@ -82,9 +85,9 @@ body {
   }
 
   .input-field {
-    @apply bg-terminal-bg border border-terminal-border rounded-lg px-4 py-2
-           text-terminal-text placeholder:text-terminal-muted
+    @apply bg-terminal-bg border border-terminal-border rounded-lg px-4 py-2.5
+           text-terminal-text placeholder:text-terminal-muted text-base sm:text-sm
            focus:outline-none focus:ring-2 focus:ring-terminal-green focus:border-transparent
-           transition-all duration-150;
+           transition-all duration-150 min-h-[44px] touch-manipulation;
   }
 }

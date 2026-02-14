@@ -174,7 +174,7 @@ export default function TaskModal({
     <>
       <button
         onClick={() => setIsEditing(true)}
-        className="p-2 text-terminal-muted hover:text-terminal-text hover:bg-terminal-bg rounded-lg transition-colors"
+        className="p-2 text-terminal-muted hover:text-terminal-text hover:bg-terminal-bg rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
         title="Edit"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,7 +184,7 @@ export default function TaskModal({
       </button>
       <button
         onClick={() => setShowDeleteConfirm(true)}
-        className="p-2 text-terminal-muted hover:text-terminal-red hover:bg-terminal-red/10 rounded-lg transition-colors"
+        className="p-2 text-terminal-muted hover:text-terminal-red hover:bg-terminal-red/10 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
         title="Delete"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,7 +202,7 @@ export default function TaskModal({
       </ModalHeader>
 
       {/* Content */}
-      <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-180px)] scrollbar-thin">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto flex-1 scrollbar-thin">
         {/* Title */}
         <div>
           <label className="block text-sm font-medium text-terminal-muted mb-2">Title</label>
@@ -237,7 +237,7 @@ export default function TaskModal({
         </div>
 
         {/* Status and Priority */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-sm font-medium text-terminal-muted mb-2">Status</label>
             {isEditing ? (
@@ -310,7 +310,7 @@ export default function TaskModal({
         {/* Execution Info (read-only) */}
         {!isEditing && (task.loop_count > 0 || task.error_count > 0 || task.assigned_to) && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {task.assigned_to && (
                 <div>
                   <label className="block text-sm font-medium text-terminal-muted mb-2">Assigned To</label>
@@ -325,26 +325,26 @@ export default function TaskModal({
               )}
             </div>
             {task.error_count > 0 && (
-              <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+              <div className="bg-terminal-red/10 border border-terminal-red/20 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-terminal-red/20 flex items-center justify-center flex-shrink-0">
                       <svg className="w-4 h-4 text-terminal-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                       </svg>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-terminal-red">
                         {task.error_count} error{task.error_count !== 1 ? 's' : ''}
                         {task.error_count >= 5 && (
-                          <span className="ml-2 text-xs font-normal text-terminal-red/80">
-                            — task will be skipped by orchestrator
+                          <span className="ml-1 sm:ml-2 text-xs font-normal text-terminal-red/80">
+                            — skipped by orchestrator
                           </span>
                         )}
                       </p>
                       <p className="text-xs text-terminal-muted mt-0.5">
-                        Orchestrator skips tasks after too many errors (default: 5)
+                        Orchestrator skips tasks after too many errors
                       </p>
                     </div>
                   </div>
@@ -354,7 +354,7 @@ export default function TaskModal({
                     className="px-3 py-1.5 text-xs font-medium rounded-md
                                bg-terminal-surface text-terminal-text border border-terminal-border
                                hover:bg-terminal-surface-hover hover:border-terminal-border-hover
-                               disabled:opacity-50 transition-colors flex-shrink-0"
+                               disabled:opacity-50 transition-colors flex-shrink-0 touch-manipulation self-start sm:self-center"
                   >
                     {isResettingErrors ? 'Resetting...' : 'Reset'}
                   </button>
@@ -403,18 +403,18 @@ export default function TaskModal({
 
         {/* Timestamps */}
         {!isEditing && (
-          <div className="border-t border-terminal-border pt-4 space-y-2 text-sm">
-            <div className="flex justify-between text-terminal-muted">
-              <span>Created:</span>
-              <span>{formatDate(task.created_at)}</span>
+          <div className="border-t border-terminal-border pt-4 space-y-2 text-xs sm:text-sm">
+            <div className="flex justify-between text-terminal-muted gap-2">
+              <span className="flex-shrink-0">Created:</span>
+              <span className="truncate text-right">{formatDate(task.created_at)}</span>
             </div>
-            <div className="flex justify-between text-terminal-muted">
-              <span>Updated:</span>
-              <span>{formatDate(task.updated_at)}</span>
+            <div className="flex justify-between text-terminal-muted gap-2">
+              <span className="flex-shrink-0">Updated:</span>
+              <span className="truncate text-right">{formatDate(task.updated_at)}</span>
             </div>
-            <div className="flex justify-between text-terminal-muted">
-              <span>Task ID:</span>
-              <span className="font-mono text-xs">{task.id}</span>
+            <div className="flex justify-between text-terminal-muted gap-2">
+              <span className="flex-shrink-0">Task ID:</span>
+              <span className="font-mono text-xs truncate text-right">{task.id}</span>
             </div>
           </div>
         )}
@@ -440,8 +440,8 @@ export default function TaskModal({
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-6 max-w-sm mx-4">
+        <div className="absolute inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-terminal-surface border border-terminal-border rounded-t-lg sm:rounded-lg p-6 w-full sm:max-w-sm sm:mx-4">
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-terminal-red/20 flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-terminal-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
