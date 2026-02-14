@@ -1,6 +1,6 @@
 # Project Context
 
-## Last Updated: 2026-02-13
+## Last Updated: 2026-02-14
 
 ## Recent Changes
 
@@ -9,6 +9,13 @@
 - **Tagged** `orchestrator/v1.0.5` — triggers release workflow (orchestrator.js + taskinfa-cli.sh)
 - **Tagged** `deploy/test/2.0.14` — deploys dashboard to test environment
 - **Tagged** `deploy/prod/2.0.14` — deploys dashboard to production environment
+### Fix version parsing in taskinfa doctor and update (fix: version-parsing)
+- **Fixed** `get_installed_version()` in `scripts/install.sh`:
+  - Old regex `="(\d+\.\d+\.\d+)"` was too generic, matched first semver string in bundled file
+  - New regex `Orchestrator v(\d+\.\d+\.\d+)` matches the specific log string in orchestrator.js
+- **Fixed** `get_latest_version()` in `scripts/install.sh`:
+  - Old code `tag.replace(/^v/, '')` didn't handle `orchestrator/v1.0.5` tag format
+  - New code `tag.replace(/^.*\/v?/, '')` strips everything up to and including the slash + optional v
 
 ### Fix taskinfa update CLI self-update (fix: taskinfa-update-cli)
 - **Modified** `scripts/install.sh` `cmd_update()`:

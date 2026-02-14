@@ -301,7 +301,7 @@ get_installed_version() {
     if [ -f "$ORCH" ]; then
         node -e "
             const src = require('fs').readFileSync('$ORCH', 'utf8');
-            const m = src.match(/=\"(\d+\.\d+\.\d+)\"/);
+            const m = src.match(/Orchestrator v(\d+\.\d+\.\d+)/);
             console.log(m ? m[1] : 'unknown');
         " 2>/dev/null || echo "unknown"
     else
@@ -316,7 +316,7 @@ get_latest_version() {
     echo "$response" | node -e "
         const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
         const tag = data.tag_name || '';
-        console.log(tag.replace(/^v/, ''));
+        console.log(tag.replace(/^.*\/v?/, ''));
     " 2>/dev/null || return 1
 }
 
