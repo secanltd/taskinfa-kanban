@@ -85,8 +85,17 @@ PR_URL=$(gh pr create \
     --base main)
 echo "PR: $PR_URL"
 
-echo "Merging PR..."
 PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+
+echo "Waiting for CI checks to pass..."
+gh pr checks "$PR_NUMBER" --watch --fail-fast || {
+    echo "Error: CI checks failed. Fix the issue and retry."
+    echo "PR is still open: $PR_URL"
+    git checkout main
+    exit 1
+}
+
+echo "Merging PR..."
 gh pr merge "$PR_NUMBER" --merge --admin --delete-branch
 
 # Switch back to main and pull the merge
