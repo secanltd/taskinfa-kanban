@@ -88,6 +88,8 @@ echo "PR: $PR_URL"
 PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 
 echo "Waiting for CI checks to pass..."
+# Give GitHub a moment to register the checks
+sleep 10
 gh pr checks "$PR_NUMBER" --watch --fail-fast || {
     echo "Error: CI checks failed. Fix the issue and retry."
     echo "PR is still open: $PR_URL"
