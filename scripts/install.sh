@@ -299,9 +299,10 @@ cmd_logs() {
 
 get_installed_version() {
     if [ -f "$ORCH" ]; then
+        # Match the banner comment: /* orchestrator-version:X.Y.Z */
         node -e "
             const src = require('fs').readFileSync('$ORCH', 'utf8');
-            const m = src.match(/Orchestrator v(\d+\.\d+\.\d+)/);
+            const m = src.match(/orchestrator-version:(\d+\.\d+\.\d+)/);
             console.log(m ? m[1] : 'unknown');
         " 2>/dev/null || echo "unknown"
     else

@@ -21,19 +21,22 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:orchestrator
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/orchestrator/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build orchestrator
+        run: npm run build:orchestrator
+        env:
+          ORCHESTRATOR_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Extract CLI script
         run: bash scripts/extract-cli.sh dist/taskinfa-cli.sh
 
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/orchestrator/}" >> "$GITHUB_OUTPUT"
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Orchestrator ${{ steps.version.outputs.version }}"
+          name: "Orchestrator v${{ steps.version.outputs.version }}"
           body: "Bundled orchestrator daemon — single-file Node.js executable with zero runtime dependencies."
           files: |
             dist/orchestrator.js
