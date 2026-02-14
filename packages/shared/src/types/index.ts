@@ -433,3 +433,49 @@ export interface UpdateApiKeyResponse {
     name: string;
   };
 }
+
+// Feature toggle types
+
+export type FeatureKey = 'refinement' | 'ai_review';
+
+export interface RefinementConfig {
+  auto_advance: boolean;
+}
+
+export interface AiReviewConfig {
+  auto_advance_on_approve: boolean;
+  max_review_rounds: number;
+}
+
+export type FeatureConfigMap = {
+  refinement: RefinementConfig;
+  ai_review: AiReviewConfig;
+};
+
+export interface FeatureToggle {
+  id: string;
+  workspace_id: string;
+  feature_key: FeatureKey;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListFeatureTogglesResponse {
+  toggles: FeatureToggle[];
+}
+
+export interface UpdateFeatureToggleRequest {
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+}
+
+export interface UpdateFeatureToggleResponse {
+  toggle: FeatureToggle;
+}
+
+export const DEFAULT_FEATURE_CONFIGS: Record<FeatureKey, Record<string, unknown>> = {
+  refinement: { auto_advance: true },
+  ai_review: { auto_advance_on_approve: true, max_review_rounds: 3 },
+};
