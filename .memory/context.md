@@ -4,31 +4,25 @@
 
 ## Recent Changes
 
-### Comprehensive Test Suite (feat: test-suite) — PR #46
-- **Switched** from Jest to Vitest for dashboard testing (faster, better TypeScript/ESM support)
-- **Created** `packages/dashboard/vitest.config.ts` — Vitest config with path aliases, V8 coverage, 30% global thresholds
-- **Created** `playwright.config.ts` — Playwright E2E config with Chromium, auto-start dev server
-- **Updated** `packages/dashboard/package.json` — test scripts now use `vitest run` instead of `jest`
-- **Updated** `package.json` — added root-level `test`, `test:coverage`, `test:e2e` scripts
-- **Updated** `.github/workflows/ci.yml` — added `test` job (unit/integration with coverage artifacts) and `e2e` job (gated by `run-e2e` label)
-- **Unit tests** (142 tests, 12 files):
-  - `src/__tests__/auth/password.test.ts` — validatePassword, hashPassword, verifyPassword
-  - `src/__tests__/auth/session.test.ts` — createSession, verifySessionToken (JWT)
-  - `src/__tests__/validations/auth.test.ts` — validateEmail, normalizeEmail
-  - `src/__tests__/utils/json.test.ts` — safeJsonParse, safeJsonStringify, safeJsonParseArray, safeJsonParseObject
-  - `src/__tests__/utils/validation.test.ts` — validateInteger, validateString, validateEnum, validateArray, validateId, sanitizeInput
-  - `src/__tests__/utils/errors.test.ts` — AppError, error helpers (validation, auth, notFound, conflict, rateLimit, database, internal)
-  - `src/__tests__/db/client.test.ts` — query, queryOne, execute with mocked D1
-  - `src/__tests__/shared/types.test.ts` — type shape verification for Task, User, TaskFilters, request types
-  - `src/__tests__/orchestrator/helpers.test.ts` — priority sorting, branch name generation, SSH-to-HTTPS URL conversion, task grouping, config parsing
-- **Integration tests**:
-  - `src/__tests__/api/auth.test.ts` — POST /api/auth/login (6 cases), POST /api/auth/signup (6 cases) with mocked D1
-  - `src/__tests__/api/tasks.test.ts` — GET /api/tasks (7 cases), POST /api/tasks (4 cases)
-  - `src/__tests__/api/events.test.ts` — POST /api/events (6 cases), GET /api/events (3 cases)
-- **E2E tests** (Playwright):
-  - `e2e/auth.spec.ts` — signup flow, login flow, logout/redirect
-  - `e2e/dashboard.spec.ts` — kanban board display, task columns, create task modal, navigation
-  - `e2e/settings.spec.ts` — settings page, workspace info, API key management
+### Batch Operations for Tasks (feat: batch-operations)
+- **Created** `packages/shared/src/types/index.ts` — Added `BulkUpdateTasksRequest`, `BulkUpdateTasksResponse`, `BulkDeleteTasksRequest`, `BulkDeleteTasksResponse` types
+- **Created** `packages/dashboard/src/app/api/tasks/bulk/route.ts` — New API route:
+  - `PATCH /api/tasks/bulk` — Bulk update tasks (status, priority, labels, assigned_to) with IN clause query, max 50 tasks
+  - `DELETE /api/tasks/bulk` — Bulk delete tasks with confirmation, max 50 tasks
+  - Both routes validate task_ids array and workspace ownership
+- **Created** `packages/dashboard/src/components/BulkActionBar.tsx` — Floating action bar component:
+  - Shows selected count, Move (dropdown with all 5 status columns), Priority (dropdown), Delete (with inline confirmation)
+  - Fixed to bottom center of viewport, appears when tasks are selected
+- **Updated** `packages/dashboard/src/components/TaskCard.tsx` — Added selection mode support:
+  - New props: `selectionMode`, `isSelected`, `onToggleSelect`
+  - Checkbox overlay in top-left when in selection mode
+  - Blue ring highlight for selected cards
+  - Drag disabled in selection mode, click toggles selection
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx` — Added selection mode orchestration:
+  - "Select" toggle button in toolbar header
+  - Select All per column checkbox in column headers
+  - Bulk move, bulk edit (priority), and bulk delete handlers with optimistic updates
+  - Selection state cleared after bulk operations complete
 
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation

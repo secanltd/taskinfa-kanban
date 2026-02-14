@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import type { Task, TaskList, TaskStatus, SessionWithDetails, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import type { Task, TaskList, TaskStatus, TaskPriority, SessionWithDetails, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getStatusColumns } from '@taskinfa/shared';
 import { useTaskStream } from '@/hooks/useTaskStream';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import SessionsPanel from './SessionsPanel';
 import CreateTaskModal from './CreateTaskModal';
+import BulkActionBar from './BulkActionBar';
 
 interface KanbanBoardProps {
   initialTasks: Task[];
@@ -50,6 +51,10 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
     }
     fetchToggles();
   }, []);
+
+  // Selection mode state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   // Handle real-time task updates from SSE
   const handleTasksUpdated = useCallback((updatedTasks: Task[]) => {
@@ -157,6 +162,142 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
     setEditingTask(null);
   };
 
+  // Selection mode handlers
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectionMode(true);
+    }
+  };
+
+  const handleToggleSelect = useCallback((taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllInColumn = (status: TaskStatus) => {
+    const columnTaskIds = getTasksByStatus(status).map((t) => t.id);
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = columnTaskIds.every((id) => next.has(id));
+      if (allSelected) {
+        columnTaskIds.forEach((id) => next.delete(id));
+      } else {
+        columnTaskIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedTaskIds(new Set());
+  };
+
+  const handleBulkMove = async (targetStatus: TaskStatus) => {
+    const ids = Array.from(selectedTaskIds);
+    const previousTasks = [...tasks];
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (selectedTaskIds.has(t.id) ? { ...t, status: targetStatus } : t))
+    );
+
+    try {
+      const response = await fetch('/api/tasks/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: ids, update: { status: targetStatus } }),
+      });
+
+      if (!response.ok) throw new Error('Failed to bulk move tasks');
+
+      const data = await response.json() as { tasks: Task[] };
+      setTasks((prev) => {
+        const updatedMap = new Map(data.tasks.map((t: Task) => [t.id, t]));
+        return prev.map((t) => updatedMap.get(t.id) || t);
+      });
+    } catch (error) {
+      console.error('Error bulk moving tasks:', error);
+      setTasks(previousTasks);
+    }
+
+    setSelectedTaskIds(new Set());
+    setSelectionMode(false);
+  };
+
+  const handleBulkEdit = async (update: { priority?: TaskPriority; labels?: string[]; assigned_to?: string | null }) => {
+    const ids = Array.from(selectedTaskIds);
+    const previousTasks = [...tasks];
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (!selectedTaskIds.has(t.id)) return t;
+        return {
+          ...t,
+          ...(update.priority && { priority: update.priority }),
+          ...(update.labels !== undefined && { labels: update.labels }),
+          ...(update.assigned_to !== undefined && { assigned_to: update.assigned_to }),
+        };
+      })
+    );
+
+    try {
+      const response = await fetch('/api/tasks/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: ids, update }),
+      });
+
+      if (!response.ok) throw new Error('Failed to bulk edit tasks');
+
+      const data = await response.json() as { tasks: Task[] };
+      setTasks((prev) => {
+        const updatedMap = new Map(data.tasks.map((t: Task) => [t.id, t]));
+        return prev.map((t) => updatedMap.get(t.id) || t);
+      });
+    } catch (error) {
+      console.error('Error bulk editing tasks:', error);
+      setTasks(previousTasks);
+    }
+
+    setSelectedTaskIds(new Set());
+    setSelectionMode(false);
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedTaskIds);
+    const previousTasks = [...tasks];
+
+    // Optimistic update
+    setTasks((prev) => prev.filter((t) => !selectedTaskIds.has(t.id)));
+
+    try {
+      const response = await fetch('/api/tasks/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: ids }),
+      });
+
+      if (!response.ok) throw new Error('Failed to bulk delete tasks');
+    } catch (error) {
+      console.error('Error bulk deleting tasks:', error);
+      setTasks(previousTasks);
+    }
+
+    setSelectedTaskIds(new Set());
+    setSelectionMode(false);
+  };
+
   return (
     <>
       {/* Header Bar */}
@@ -181,8 +322,23 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           )}
         </div>
 
-        {/* Right: Sessions + Create */}
+        {/* Right: Select Mode + Sessions + Create */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Selection Mode Toggle */}
+          <button
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border transition-colors touch-manipulation min-h-[44px] text-xs sm:text-sm
+              ${selectionMode
+                ? 'bg-terminal-blue/10 border-terminal-blue text-terminal-blue'
+                : 'bg-terminal-surface border-terminal-border text-terminal-muted hover:bg-terminal-surface-hover hover:border-terminal-border-hover'
+              }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
+          </button>
+
           {/* Sessions Indicator */}
           <button
             onClick={() => setIsSessionsPanelOpen(!isSessionsPanelOpen)}
@@ -230,6 +386,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         {statusColumns.map((column) => {
           const columnTasks = getTasksByStatus(column.status);
           const isDragOver = dragOverColumn === column.status;
+          const allColumnSelected = columnTasks.length > 0 && columnTasks.every((t) => selectedTaskIds.has(t.id));
 
           return (
             <div key={column.status} className="flex-shrink-0 w-[260px] sm:w-72">
@@ -237,6 +394,27 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
               <div className="sticky top-0 z-10 bg-terminal-surface rounded-t-lg px-3 sm:px-4 py-2.5 sm:py-3 border border-terminal-border border-b-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 sm:gap-2">
+                    {selectionMode && columnTasks.length > 0 && (
+                      <button
+                        onClick={() => handleSelectAllInColumn(column.status)}
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0
+                          ${allColumnSelected
+                            ? 'border-terminal-blue'
+                            : 'border-terminal-muted hover:border-terminal-blue'
+                          }`}
+                        style={{
+                          backgroundColor: allColumnSelected ? 'var(--terminal-blue)' : 'transparent',
+                          borderColor: allColumnSelected ? 'var(--terminal-blue)' : undefined,
+                        }}
+                        title={allColumnSelected ? 'Deselect all' : 'Select all'}
+                      >
+                        {allColumnSelected && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
                     <span className="text-sm sm:text-base">{column.icon}</span>
                     <h2 className="font-semibold text-terminal-text text-sm sm:text-base">{column.label}</h2>
                   </div>
@@ -273,6 +451,9 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
                       task={task}
                       worker={worker}
                       isDragging={draggedTask?.id === task.id}
+                      selectionMode={selectionMode}
+                      isSelected={selectedTaskIds.has(task.id)}
+                      onToggleSelect={handleToggleSelect}
                       onDragStart={() => handleDragStart(task)}
                       onClick={() => handleTaskClick(task)}
                       onEdit={() => handleTaskEdit(task)}
@@ -296,6 +477,17 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           );
         })}
       </div>
+
+      {/* Bulk Action Bar */}
+      {selectionMode && selectedTaskIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedTaskIds.size}
+          onMove={handleBulkMove}
+          onEdit={handleBulkEdit}
+          onDelete={handleBulkDelete}
+          onClearSelection={handleClearSelection}
+        />
+      )}
 
       {/* Task Modal */}
       {selectedTask && (
