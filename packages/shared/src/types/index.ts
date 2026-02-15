@@ -31,6 +31,7 @@ export interface Task {
   id: string;
   workspace_id: string;
   task_list_id: string | null;
+  parent_task_id: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -55,6 +56,24 @@ export interface Task {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+
+  // Subtask progress (populated by API, not stored in DB)
+  subtask_count?: number;
+  subtask_done_count?: number;
+}
+
+export interface TaskDependency {
+  id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  workspace_id: string;
+  created_at: string;
+}
+
+export interface TaskWithRelations extends Task {
+  subtasks?: Task[];
+  dependencies?: TaskDependency[];
+  is_blocked?: boolean;
 }
 
 export interface User {
@@ -305,6 +324,7 @@ export interface UpdateTaskStatusResponse {
 export interface CreateTaskRequest {
   workspace_id: string;
   task_list_id?: string;
+  parent_task_id?: string;
   title: string;
   description?: string;
   priority?: TaskPriority;
@@ -338,6 +358,19 @@ export interface BulkDeleteTasksRequest {
 
 export interface BulkDeleteTasksResponse {
   deleted: number;
+}
+
+export interface AddDependencyRequest {
+  depends_on_task_id: string;
+}
+
+export interface AddDependencyResponse {
+  dependency: TaskDependency;
+}
+
+export interface ListDependenciesResponse {
+  dependencies: TaskDependency[];
+  blocked_by: Array<{ id: string; title: string; status: TaskStatus }>;
 }
 
 // Comment request/response types

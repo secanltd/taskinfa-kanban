@@ -235,6 +235,13 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
       return;
     }
 
+    // Prevent moving blocked tasks to active statuses
+    const taskWithMeta = draggedTask as Task & { is_blocked?: boolean };
+    if (taskWithMeta.is_blocked && (newStatus === 'todo' || newStatus === 'in_progress')) {
+      setDraggedTask(null);
+      return;
+    }
+
     // Optimistic update
     const previousTasks = [...tasks];
     setTasks((prev) =>

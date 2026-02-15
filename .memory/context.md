@@ -4,16 +4,36 @@
 
 ## Recent Changes
 
-### Stuck Session Detection & Auto-Recovery (feat: stuck-session-detection)
+### Task Dependencies and Subtask Support (feat: task-dependencies-subtasks)
+- **Created** `packages/dashboard/migrations/012_subtasks_and_dependencies.sql`:
+  - Added `parent_task_id` column to `tasks` table for subtask relationships
+  - Created `task_dependencies` table (id, task_id, depends_on_task_id, workspace_id) with unique constraint
+  - Added indexes for efficient queries on both tables
+- **Updated** `packages/shared/src/types/index.ts`:
+  - Added `parent_task_id` and optional `subtask_count`/`subtask_done_count` to `Task` interface
+  - Added `TaskDependency`, `TaskWithRelations` interfaces
+  - Added `AddDependencyRequest/Response`, `ListDependenciesResponse` types
+  - Added `parent_task_id` to `CreateTaskRequest`
+- **Created** `packages/dashboard/src/app/api/tasks/[id]/dependencies/route.ts`:
+  - `GET` - List dependencies with blocked-by task details
+  - `POST` - Add dependency with circular dependency detection
+  - `DELETE` - Remove dependency by query param
+- **Updated** `packages/dashboard/src/app/api/tasks/route.ts`:
+  - GET: Added `parent_task_id` filter, subtask counts, and `is_blocked` status
+  - POST: Support `parent_task_id` for creating subtasks
+- **Updated** `packages/dashboard/src/app/api/tasks/[id]/route.ts`:
+  - GET: Returns subtasks, dependencies, and blocked status
+  - PATCH: Prevents moving blocked tasks to todo/in_progress; auto-completes parent when all subtasks done
+- **Updated** `packages/dashboard/src/app/api/tasks/next/route.ts`:
+  - Excludes subtasks and blocked tasks from next task selection
+- **Updated** `packages/dashboard/src/components/TaskCard.tsx`:
+  - Lock icon for blocked tasks, subtask progress bar (X/Y done)
+- **Updated** `packages/dashboard/src/components/TaskModal.tsx`:
+  - Shows subtask list with completion checkmarks and dependency info
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx`:
+  - Prevents dragging blocked tasks to active columns
 - **Updated** `scripts/orchestrator.ts`:
-  - Extended `activeSessions` map value type to include `startedAt: number` timestamp
-  - Added `SESSION_TIMEOUT_MS` config (env var, default 45 minutes)
-  - Added `isProcessAlive()` helper using POSIX `kill(pid, 0)` pattern
-  - Added `checkStuckSessions()` function: iterates active sessions, detects timeout or dead processes, kills stuck processes (SIGTERM then SIGKILL after 5s), resets tasks to `todo` with incremented `error_count`, posts error events
-  - Enhanced `getActiveSessions()` with orphan session cleanup: detects API-active sessions with no local process (orchestrator restart scenario), marks them as `error`
-  - Hooked `checkStuckSessions()` into `pollCycle()` as the first step before any task processing
-  - Updated all 4 `activeSessions.set()` call sites with `startedAt: Date.now()`
-  - Added `SESSION_TIMEOUT_MS` to startup log and doc comment
+  - Skips subtasks and blocked tasks in `getProjectTasks()`
 
 ### AI Review Feature in Orchestrator (feat: ai-review)
 - **Updated** `scripts/orchestrator.ts`:
