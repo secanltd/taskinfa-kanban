@@ -1,10 +1,10 @@
 // API Route: /api/sessions/[id]
 // Get and update individual sessions
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, queryOne, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import {
   createErrorResponse,
   authenticationError,
@@ -58,7 +58,7 @@ export async function GET(
       metadata: typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata,
     }));
 
-    return NextResponse.json({ session, events: parsedEvents });
+    return jsonWithRateLimit({ session, events: parsedEvents }, rl.result);
   } catch (error) {
     return createErrorResponse(error, { operation: 'get_session' });
   }
@@ -126,7 +126,7 @@ export async function PATCH(
     }
 
     if (updates.length === 0) {
-      return NextResponse.json({ session: existing });
+      return jsonWithRateLimit({ session: existing }, rl.result);
     }
 
     updates.push("updated_at = datetime('now')");
@@ -144,7 +144,7 @@ export async function PATCH(
       [id]
     );
 
-    return NextResponse.json({ session: updated });
+    return jsonWithRateLimit({ session: updated }, rl.result);
   } catch (error) {
     return createErrorResponse(error, { operation: 'update_session' });
   }

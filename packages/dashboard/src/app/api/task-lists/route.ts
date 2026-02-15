@@ -1,10 +1,10 @@
 // API Route: /api/task-lists
 // List and create task lists (projects)
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { TaskList } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
 import {
@@ -32,10 +32,10 @@ export async function GET(request: NextRequest) {
       [auth.workspaceId]
     );
 
-    return NextResponse.json({
+    return jsonWithRateLimit({
       task_lists: taskLists,
       total: taskLists.length,
-    });
+    }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_task_lists',
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to create task list');
     }
 
-    return NextResponse.json({ task_list: taskList[0] }, { status: 201 });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result, { status: 201 });
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'create_task_list',

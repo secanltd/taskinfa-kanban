@@ -1,10 +1,10 @@
 // API Route: /api/tasks/[id]
 // Get, update, and delete individual tasks
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, queryOne, query, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { Task, UpdateTaskStatusRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getValidStatuses } from '@taskinfa/shared';
 import {
@@ -65,7 +65,7 @@ export async function GET(
       files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
-    return NextResponse.json({ task: parsedTask });
+    return jsonWithRateLimit({ task: parsedTask }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_task',
@@ -241,7 +241,7 @@ export async function PATCH(
       files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     };
 
-    return NextResponse.json({ task: parsedTask });
+    return jsonWithRateLimit({ task: parsedTask }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'update_task',
@@ -272,7 +272,7 @@ export async function DELETE(
       [id, auth.workspaceId]
     );
 
-    return NextResponse.json({ success: true });
+    return jsonWithRateLimit({ success: true }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'delete_task',

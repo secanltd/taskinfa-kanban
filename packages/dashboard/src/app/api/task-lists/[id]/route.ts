@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { TaskList } from '@taskinfa/shared';
 import {
   createErrorResponse,
@@ -38,7 +38,7 @@ export async function GET(
       throw notFoundError('Task list not found');
     }
 
-    return NextResponse.json({ task_list: taskList[0] });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_task_list',
@@ -138,7 +138,7 @@ export async function PATCH(
       [params.id]
     );
 
-    return NextResponse.json({ task_list: taskList[0] });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'update_task_list',
@@ -196,7 +196,7 @@ export async function DELETE(
       [params.id, auth.workspaceId]
     );
 
-    return NextResponse.json({ success: true });
+    return jsonWithRateLimit({ success: true }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'delete_task_list',

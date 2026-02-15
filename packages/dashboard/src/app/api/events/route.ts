@@ -2,10 +2,10 @@
 // Accepts status events from Claude hooks, writes to session_events
 // Triggers Telegram notification for critical events
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, queryOne, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import { nanoid } from 'nanoid';
 import {
   createErrorResponse,
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     };
 
-    return NextResponse.json({ event }, { status: 201 });
+    return jsonWithRateLimit({ event }, rl.result, { status: 201 });
   } catch (error) {
     return createErrorResponse(error, { operation: 'create_event' });
   }
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       metadata: typeof e.metadata === 'string' ? JSON.parse(e.metadata as string) : e.metadata,
     }));
 
-    return NextResponse.json({ events: parsed, total: parsed.length });
+    return jsonWithRateLimit({ events: parsed, total: parsed.length }, rl.result);
   } catch (error) {
     return createErrorResponse(error, { operation: 'list_events' });
   }

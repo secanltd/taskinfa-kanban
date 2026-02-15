@@ -70,17 +70,25 @@ export async function checkRateLimit(
   const resetAt = now + config.windowMs;
 
   try {
-    // Batch: cleanup expired + count window + insert new entry
-    // Use a single transaction-like flow for consistency
-    const countResult = await db
+    // Insert first, then count — reduces the race window vs count-then-insert.
+    // Use db.batch() to execute atomically in a single round-trip.
+    const insertStmt = db
+      .prepare('INSERT INTO rate_limit_entries (key, timestamp, expires_at) VALUES (?, ?, ?)')
+      .bind(key, now, now + config.windowMs);
+    const countStmt = db
       .prepare('SELECT COUNT(*) as count FROM rate_limit_entries WHERE key = ? AND timestamp > ?')
-      .bind(key, windowStart)
-      .first<{ count: number }>();
+      .bind(key, windowStart);
 
-    const currentCount = countResult?.count ?? 0;
+    const [, countBatch] = await db.batch([insertStmt, countStmt]);
+    const currentCount = (countBatch?.results?.[0] as { count: number } | undefined)?.count ?? 1;
 
-    if (currentCount >= config.maxRequests) {
-      // Over limit - don't record this request
+    if (currentCount > config.maxRequests) {
+      // Over limit — delete the entry we just inserted
+      await db
+        .prepare('DELETE FROM rate_limit_entries WHERE key = ? AND timestamp = ?')
+        .bind(key, now)
+        .run();
+
       return {
         allowed: false,
         limit: config.maxRequests,
@@ -89,14 +97,7 @@ export async function checkRateLimit(
       };
     }
 
-    // Record this request
-    await db
-      .prepare('INSERT INTO rate_limit_entries (key, timestamp, expires_at) VALUES (?, ?, ?)')
-      .bind(key, now, now + config.windowMs)
-      .run();
-
-    // Opportunistic cleanup of old entries (fire and forget, don't block response)
-    // Only do it ~5% of the time to avoid overhead
+    // Opportunistic cleanup of old entries (~5% of the time)
     if (Math.random() < 0.05) {
       db.prepare('DELETE FROM rate_limit_entries WHERE expires_at < ?')
         .bind(now)
@@ -107,7 +108,7 @@ export async function checkRateLimit(
     return {
       allowed: true,
       limit: config.maxRequests,
-      remaining: config.maxRequests - currentCount - 1,
+      remaining: config.maxRequests - currentCount,
       resetAt,
     };
   } catch (error) {

@@ -1,10 +1,10 @@
 // API Route: /api/tasks/next
 // Get the highest priority unassigned task across all projects
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { Task } from '@taskinfa/shared';
 import {
   safeJsonParseArray,
@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
     `, [workspaceId]);
 
     if (tasks.length === 0) {
-      return NextResponse.json({
+      return jsonWithRateLimit({
         task: null,
         project: null,
         message: 'No tasks available',
-      });
+      }, rl.result);
     }
 
     const taskRow = tasks[0];
@@ -80,14 +80,14 @@ export async function GET(request: NextRequest) {
       files_changed: safeJsonParseArray<string>(cleanTask.files_changed as unknown as string, []),
     };
 
-    return NextResponse.json({
+    return jsonWithRateLimit({
       task: parsedTask,
       project: {
         id: project_id,
         name: project_name,
         repository_url: repository_url,
       },
-    });
+    }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_next_task',

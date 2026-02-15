@@ -67,3 +67,16 @@ export async function rateLimitAuth(
 export function applyRateLimitHeaders(response: NextResponse, result: RateLimitResult): NextResponse {
   return withRateLimitHeaders(response, result);
 }
+
+/**
+ * Create a NextResponse.json() with rate limit headers applied.
+ * Convenience wrapper for API routes that use rateLimitApi().
+ */
+export function jsonWithRateLimit(
+  data: unknown,
+  result: RateLimitResult,
+  init?: { status?: number }
+): NextResponse {
+  const response = NextResponse.json(data, init);
+  return withRateLimitHeaders(response, result);
+}

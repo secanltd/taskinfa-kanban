@@ -1,10 +1,10 @@
 // API Route: /api/sessions
 // CRUD for Claude Code sessions
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import { nanoid } from 'nanoid';
 import {
   createErrorResponse,
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sessions, stats });
+    return jsonWithRateLimit({ sessions, stats }, rl.result);
   } catch (error) {
     return createErrorResponse(error, { operation: 'list_sessions' });
   }
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     const session = await query(db, 'SELECT * FROM sessions WHERE id = ?', [sessionId]);
 
-    return NextResponse.json({ session: session[0] }, { status: 201 });
+    return jsonWithRateLimit({ session: session[0] }, rl.result, { status: 201 });
   } catch (error) {
     return createErrorResponse(error, { operation: 'create_session' });
   }

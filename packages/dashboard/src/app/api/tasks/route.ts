@@ -1,10 +1,10 @@
 // API Route: /api/tasks
 // List and create tasks
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
-import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { Task, ListTasksRequest, CreateTaskRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getValidStatuses } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
@@ -103,10 +103,10 @@ export async function GET(request: NextRequest) {
       files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
     }));
 
-    return NextResponse.json({
+    return jsonWithRateLimit({
       tasks: parsedTasks,
       total: tasks.length,
-    });
+    }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_tasks',
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
       files_changed: safeJsonParseArray<string>(task[0].files_changed as unknown as string, []),
     };
 
-    return NextResponse.json({ task: parsedTask }, { status: 201 });
+    return jsonWithRateLimit({ task: parsedTask }, rl.result, { status: 201 });
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'create_task',
