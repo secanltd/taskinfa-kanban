@@ -282,6 +282,31 @@ export interface CreateTaskResponse {
   task: Task;
 }
 
+// Bulk operation request/response types
+
+export interface BulkUpdateTasksRequest {
+  task_ids: string[];
+  update: {
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    labels?: string[];
+    assigned_to?: string | null;
+  };
+}
+
+export interface BulkUpdateTasksResponse {
+  updated: number;
+  tasks: Task[];
+}
+
+export interface BulkDeleteTasksRequest {
+  task_ids: string[];
+}
+
+export interface BulkDeleteTasksResponse {
+  deleted: number;
+}
+
 // Comment request/response types
 
 export interface AddTaskCommentRequest {
