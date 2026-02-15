@@ -24,3 +24,83 @@ jobs:
       - run: npm run lint
 
       - run: npm run build
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TURBO_DANGEROUSLY_DISABLE_PACKAGE_MANAGER_CHECK: 1
+      JWT_SECRET: ci-test-secret-key-for-testing-only-32chars!!
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Run unit and integration tests
+        run: npm run test:coverage --workspace=packages/dashboard
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: packages/dashboard/coverage/
+          retention-days: 7
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_DANGEROUSLY_DISABLE_PACKAGE_MANAGER_CHECK: 1
+    # E2E tests require a running app instance - run on-demand only
+    if: contains(github.event.pull_request.labels.*.name, 'run-e2e')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Build dashboard
+        run: npm run build --workspace=packages/dashboard
+
+      - name: Start application server
+        run: npm run start --workspace=packages/dashboard &
+        env:
+          JWT_SECRET: ci-test-secret-key-for-testing-only-32chars!!
+          PORT: 3000
+
+      - name: Wait for server to be ready
+        run: npx wait-on http://localhost:3000 --timeout 30000
+
+      - name: Run E2E tests
+        run: npx playwright test
+        env:
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

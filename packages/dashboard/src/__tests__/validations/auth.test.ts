@@ -1,11 +1,12 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { validateEmail, normalizeEmail } from '@/lib/validations/auth';
 
-describe('Email Validation', () => {
+describe('validateEmail', () => {
   it('should accept valid email addresses', () => {
     expect(validateEmail('test@example.com')).toBe(true);
     expect(validateEmail('user.name@example.co.uk')).toBe(true);
     expect(validateEmail('test+tag@example.com')).toBe(true);
+    expect(validateEmail('user123@domain.io')).toBe(true);
   });
 
   it('should reject invalid email addresses', () => {
@@ -17,7 +18,7 @@ describe('Email Validation', () => {
   });
 });
 
-describe('Email Normalization', () => {
+describe('normalizeEmail', () => {
   it('should convert email to lowercase', () => {
     expect(normalizeEmail('Test@Example.COM')).toBe('test@example.com');
     expect(normalizeEmail('USER@DOMAIN.COM')).toBe('user@domain.com');

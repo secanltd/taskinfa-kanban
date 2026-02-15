@@ -4,24 +4,31 @@
 
 ## Recent Changes
 
-### Task Analytics and Productivity Dashboard (feat: analytics)
-- **Created** `packages/dashboard/src/app/api/analytics/route.ts` — New `GET /api/analytics` endpoint:
-  - Throughput: tasks completed per day/week/month with configurable period
-  - Cycle time: average hours from created to done, grouped by priority
-  - Status distribution: task count per status for donut chart
-  - Burndown: tasks remaining over time (last 90 days)
-  - Session analytics: total/completed/error/stuck sessions, avg duration, success rate, retry rate
-  - Bottleneck detection: tasks stuck in in_progress/review for >24 hours
-- **Created** `packages/dashboard/src/app/analytics/page.tsx` — New `/analytics` page with auth, header, navigation
-- **Created** `packages/dashboard/src/components/analytics/AnalyticsDashboard.tsx` — Client component with:
-  - Period selector (Daily/Weekly/Monthly)
-  - Session stats cards (total sessions, success rate, avg duration, avg retries)
-  - Throughput bar chart, status distribution donut chart, cycle time horizontal bars, burndown area chart
-  - Session performance breakdown, bottleneck detection table
-  - Uses recharts library for all visualizations
-- **Installed** `recharts` as a dependency
-- **Updated** `packages/dashboard/src/app/dashboard/page.tsx` — Added Analytics nav link
-- **Updated** `packages/dashboard/src/app/overview/page.tsx` — Added Analytics nav link
+### Comprehensive Test Suite (feat: test-suite) — PR #46
+- **Switched** from Jest to Vitest for dashboard testing (faster, better TypeScript/ESM support)
+- **Created** `packages/dashboard/vitest.config.ts` — Vitest config with path aliases, V8 coverage, 30% global thresholds
+- **Created** `playwright.config.ts` — Playwright E2E config with Chromium, auto-start dev server
+- **Updated** `packages/dashboard/package.json` — test scripts now use `vitest run` instead of `jest`
+- **Updated** `package.json` — added root-level `test`, `test:coverage`, `test:e2e` scripts
+- **Updated** `.github/workflows/ci.yml` — added `test` job (unit/integration with coverage artifacts) and `e2e` job (gated by `run-e2e` label)
+- **Unit tests** (142 tests, 12 files):
+  - `src/__tests__/auth/password.test.ts` — validatePassword, hashPassword, verifyPassword
+  - `src/__tests__/auth/session.test.ts` — createSession, verifySessionToken (JWT)
+  - `src/__tests__/validations/auth.test.ts` — validateEmail, normalizeEmail
+  - `src/__tests__/utils/json.test.ts` — safeJsonParse, safeJsonStringify, safeJsonParseArray, safeJsonParseObject
+  - `src/__tests__/utils/validation.test.ts` — validateInteger, validateString, validateEnum, validateArray, validateId, sanitizeInput
+  - `src/__tests__/utils/errors.test.ts` — AppError, error helpers (validation, auth, notFound, conflict, rateLimit, database, internal)
+  - `src/__tests__/db/client.test.ts` — query, queryOne, execute with mocked D1
+  - `src/__tests__/shared/types.test.ts` — type shape verification for Task, User, TaskFilters, request types
+  - `src/__tests__/orchestrator/helpers.test.ts` — priority sorting, branch name generation, SSH-to-HTTPS URL conversion, task grouping, config parsing
+- **Integration tests**:
+  - `src/__tests__/api/auth.test.ts` — POST /api/auth/login (6 cases), POST /api/auth/signup (6 cases) with mocked D1
+  - `src/__tests__/api/tasks.test.ts` — GET /api/tasks (7 cases), POST /api/tasks (4 cases)
+  - `src/__tests__/api/events.test.ts` — POST /api/events (6 cases), GET /api/events (3 cases)
+- **E2E tests** (Playwright):
+  - `e2e/auth.spec.ts` — signup flow, login flow, logout/redirect
+  - `e2e/dashboard.spec.ts` — kanban board display, task columns, create task modal, navigation
+  - `e2e/settings.spec.ts` — settings page, workspace info, API key management
 
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
@@ -87,4 +94,3 @@
 - Mobile-first responsive design with Tailwind breakpoints (sm: 640px, md: 768px)
 - Bottom sheet modal pattern on mobile devices
 - Dual card/table layouts for data-heavy views on mobile vs desktop
-- recharts library used for analytics charts (bar, pie, area, line)

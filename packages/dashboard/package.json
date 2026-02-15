@@ -11,9 +11,9 @@
     "deploy:prod": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env production",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local",
     "db:migrate:test": "wrangler d1 execute taskinfa-kanban-test-db --remote",
     "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-prod-db --remote"
@@ -30,21 +30,20 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
-    "@jest/globals": "^30.2.0",
     "@opennextjs/cloudflare": "^1.15.1",
-    "@types/jest": "^30.0.0",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.20",
     "esbuild": "^0.27.2",
     "eslint": "^9.18.0",
     "eslint-config-next": "^15.1.4",
-    "jest": "^30.2.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "ts-jest": "^29.4.6",
     "typescript": "^5.7.2",
+    "vitest": "^4.0.18",
     "wrangler": "^4.60.0"
   }
 }
