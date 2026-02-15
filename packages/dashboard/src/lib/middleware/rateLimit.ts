@@ -71,16 +71,17 @@ export async function checkRateLimit(
 
   try {
     // Insert first, then count — reduces the race window vs count-then-insert.
-    // Use db.batch() to execute atomically in a single round-trip.
-    const insertStmt = db
+    await db
       .prepare('INSERT INTO rate_limit_entries (key, timestamp, expires_at) VALUES (?, ?, ?)')
-      .bind(key, now, now + config.windowMs);
-    const countStmt = db
-      .prepare('SELECT COUNT(*) as count FROM rate_limit_entries WHERE key = ? AND timestamp > ?')
-      .bind(key, windowStart);
+      .bind(key, now, now + config.windowMs)
+      .run();
 
-    const [, countBatch] = await db.batch([insertStmt, countStmt]);
-    const currentCount = (countBatch?.results?.[0] as { count: number } | undefined)?.count ?? 1;
+    const countResult = await db
+      .prepare('SELECT COUNT(*) as count FROM rate_limit_entries WHERE key = ? AND timestamp > ?')
+      .bind(key, windowStart)
+      .first<{ count: number }>();
+
+    const currentCount = countResult?.count ?? 1;
 
     if (currentCount > config.maxRequests) {
       // Over limit — delete the entry we just inserted
