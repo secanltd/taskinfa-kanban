@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { TaskList } from '@taskinfa/shared';
 import {
   createErrorResponse,
@@ -23,6 +24,8 @@ export async function GET(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
     const taskList = await query<TaskList>(
@@ -35,7 +38,7 @@ export async function GET(
       throw notFoundError('Task list not found');
     }
 
-    return NextResponse.json({ task_list: taskList[0] });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'get_task_list',
@@ -54,6 +57,8 @@ export async function PATCH(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
 
@@ -133,7 +138,7 @@ export async function PATCH(
       [params.id]
     );
 
-    return NextResponse.json({ task_list: taskList[0] });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'update_task_list',
@@ -152,6 +157,8 @@ export async function DELETE(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
 
@@ -189,7 +196,7 @@ export async function DELETE(
       [params.id, auth.workspaceId]
     );
 
-    return NextResponse.json({ success: true });
+    return jsonWithRateLimit({ success: true }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'delete_task_list',

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, query } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
 import { generateApiKey } from '@/lib/auth/jwt';
-import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from '@/lib/middleware/rateLimit';
+import { checkRateLimit, createRateLimitResponse, sessionRateLimitKey, RATE_LIMITS } from '@/lib/middleware/rateLimit';
+import { applyRateLimitHeaders } from '@/lib/middleware/apiRateLimit';
 import type { CreateApiKeyRequest, CreateApiKeyResponse, ListApiKeysResponse, ApiKey } from '@taskinfa/shared';
 
 
@@ -57,12 +58,6 @@ export async function GET(request: NextRequest) {
 
 // POST /api/keys - Generate new API key
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  const rateLimit = checkRateLimit(request, 'api-key-create', RATE_LIMITS.API_KEY_CREATE);
-  if (!rateLimit.allowed) {
-    return createRateLimitResponse(rateLimit.resetAt);
-  }
-
   try {
     // Verify session authentication
     const session = await requireAuth(request);
@@ -72,6 +67,14 @@ export async function POST(request: NextRequest) {
         { error: 'Not authenticated' },
         { status: 401 }
       );
+    }
+
+    // D1-based rate limiting (10/hour per user)
+    const db = getDb();
+    const rlKey = sessionRateLimitKey(session.userId, 'api-key-create');
+    const rl = await checkRateLimit(db, rlKey, RATE_LIMITS.API_KEY_CREATE);
+    if (!rl.allowed) {
+      return createRateLimitResponse(rl);
     }
 
     const body: CreateApiKeyRequest = await request.json();
@@ -110,8 +113,6 @@ export async function POST(request: NextRequest) {
       expiresInDays
     );
 
-    const db = getDb();
-
     // Fetch created key details
     const keyRecord = await query<ApiKey>(
       db,
@@ -135,7 +136,8 @@ export async function POST(request: NextRequest) {
       warning: "Save this key now. You won't be able to see it again.",
     };
 
-    return NextResponse.json(response, { status: 201 });
+    const nextResponse = NextResponse.json(response, { status: 201 });
+    return applyRateLimitHeaders(nextResponse, rl);
 
   } catch (error) {
     console.error('Create API key error:', error);

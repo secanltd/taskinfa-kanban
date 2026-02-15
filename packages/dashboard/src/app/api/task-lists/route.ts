@@ -1,9 +1,10 @@
 // API Route: /api/task-lists
 // List and create task lists (projects)
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
 import type { TaskList } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
 import {
@@ -16,11 +17,13 @@ import {
 // GET /api/task-lists - List task lists
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate (supports both session cookies and API keys)
+    // Authenticate and rate limit
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const db = getDb();
     const taskLists = await query<TaskList>(
@@ -29,10 +32,10 @@ export async function GET(request: NextRequest) {
       [auth.workspaceId]
     );
 
-    return NextResponse.json({
+    return jsonWithRateLimit({
       task_lists: taskLists,
       total: taskLists.length,
-    });
+    }, rl.result);
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_task_lists',
@@ -44,11 +47,13 @@ export async function GET(request: NextRequest) {
 // POST /api/task-lists - Create task list
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate (supports both session cookies and API keys)
+    // Authenticate and rate limit
     const auth = await authenticateRequestUnified(request);
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const body: any = await request.json();
     const { name, description, repository_url, working_directory = '/workspace' } = body;
@@ -129,7 +134,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to create task list');
     }
 
-    return NextResponse.json({ task_list: taskList[0] }, { status: 201 });
+    return jsonWithRateLimit({ task_list: taskList[0] }, rl.result, { status: 201 });
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'create_task_list',
