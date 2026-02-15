@@ -79,17 +79,18 @@ export async function GET(
       [id, auth.workspaceId]
     );
 
-    // Check if blocked (any dependency not done)
+    // Get blocked-by task details (title + status for display)
     let is_blocked = false;
+    let blocked_by: { id: string; title: string; status: string }[] = [];
     if (dependencies.length > 0) {
-      const blockedCheck = await query<{ cnt: number }>(
+      blocked_by = await query<{ id: string; title: string; status: string }>(
         db,
-        `SELECT COUNT(*) as cnt FROM task_dependencies td
+        `SELECT t.id, t.title, t.status FROM task_dependencies td
          JOIN tasks t ON td.depends_on_task_id = t.id
-         WHERE td.task_id = ? AND t.status != 'done'`,
+         WHERE td.task_id = ?`,
         [id]
       );
-      is_blocked = (blockedCheck[0]?.cnt ?? 0) > 0;
+      is_blocked = blocked_by.some(t => t.status !== 'done');
     }
 
     const parsedTask = {
@@ -100,6 +101,7 @@ export async function GET(
       subtask_done_count: subtasks.filter(st => st.status === 'done').length,
       subtasks: parsedSubtasks,
       dependencies,
+      blocked_by,
       is_blocked,
     };
 

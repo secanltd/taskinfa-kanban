@@ -9,6 +9,7 @@ import Modal, { ModalHeader, ModalFooter } from './Modal';
 interface TaskDetails extends Task {
   subtasks?: Task[];
   dependencies?: TaskDependency[];
+  blocked_by?: { id: string; title: string; status: string }[];
   is_blocked?: boolean;
 }
 
@@ -454,7 +455,7 @@ export default function TaskModal({
         )}
 
         {/* Dependencies (read-only) */}
-        {!isEditing && taskDetails?.dependencies && taskDetails.dependencies.length > 0 && (
+        {!isEditing && taskDetails?.blocked_by && taskDetails.blocked_by.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-terminal-muted mb-2">Dependencies</label>
             <div className="bg-terminal-amber/10 border border-terminal-amber/20 rounded-lg p-3">
@@ -468,9 +469,17 @@ export default function TaskModal({
                 </span>
               </div>
               <div className="space-y-1 text-sm">
-                {taskDetails.dependencies.map((dep) => (
-                  <div key={dep.id} className="text-terminal-muted">
-                    Task {dep.depends_on_task_id.replace('task_', '').slice(0, 8)}
+                {taskDetails.blocked_by.map((dep) => (
+                  <div key={dep.id} className="flex items-center gap-2 text-terminal-muted">
+                    <span className={dep.status === 'done' ? 'text-terminal-green' : ''}>
+                      {dep.status === 'done' ? '✓' : '○'}
+                    </span>
+                    <span className={dep.status === 'done' ? 'line-through' : ''}>
+                      {dep.title}
+                    </span>
+                    <span className="text-xs ml-auto">
+                      {statusColumns.find(c => c.status === dep.status)?.label || dep.status}
+                    </span>
                   </div>
                 ))}
               </div>

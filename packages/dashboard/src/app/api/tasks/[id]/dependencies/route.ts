@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
+import { rateLimitApi } from '@/lib/middleware/apiRateLimit';
 import type { TaskDependency, Task } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
 import {
@@ -23,6 +24,8 @@ export async function GET(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { id } = await params;
     const db = getDb();
@@ -61,7 +64,6 @@ export async function GET(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'list_dependencies',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -76,6 +78,8 @@ export async function POST(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { id } = await params;
     const body = await request.json() as { depends_on_task_id?: string };
@@ -102,16 +106,18 @@ export async function POST(
       throw notFoundError('One or both tasks');
     }
 
-    // Check for circular dependency: does depends_on_task_id already depend on id?
-    const circular = await query<TaskDependency>(
+    // Check for circular dependency: adding "id depends on depends_on_task_id"
+    // would create a cycle if id is reachable from depends_on_task_id via existing deps.
+    // Start from depends_on_task_id and follow the chain forward.
+    const circular = await query<{ tid: string }>(
       db,
-      `WITH RECURSIVE dep_chain(task_id) AS (
-        SELECT task_id FROM task_dependencies WHERE depends_on_task_id = ? AND workspace_id = ?
+      `WITH RECURSIVE dep_chain(tid) AS (
+        SELECT depends_on_task_id FROM task_dependencies WHERE task_id = ? AND workspace_id = ?
         UNION
-        SELECT td.task_id FROM task_dependencies td JOIN dep_chain dc ON td.depends_on_task_id = dc.task_id WHERE td.workspace_id = ?
+        SELECT td.depends_on_task_id FROM task_dependencies td JOIN dep_chain dc ON td.task_id = dc.tid WHERE td.workspace_id = ?
       )
-      SELECT task_id FROM dep_chain WHERE task_id = ?`,
-      [id, auth.workspaceId, auth.workspaceId, depends_on_task_id]
+      SELECT tid FROM dep_chain WHERE tid = ?`,
+      [depends_on_task_id, auth.workspaceId, auth.workspaceId, id]
     );
 
     if (circular.length > 0) {
@@ -148,7 +154,6 @@ export async function POST(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'add_dependency',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -163,6 +168,8 @@ export async function DELETE(
     if (!auth) {
       throw authenticationError();
     }
+    const rl = await rateLimitApi(request, auth);
+    if ('response' in rl) return rl.response;
 
     const { id } = await params;
     const { searchParams } = new URL(request.url);
@@ -184,7 +191,6 @@ export async function DELETE(
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'remove_dependency',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
