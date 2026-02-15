@@ -117,8 +117,11 @@ interface Task {
   priority: string;
   task_list_id: string | null;
   error_count: number;
+  review_rounds: number;
   pr_url: string | null;
   branch_name: string | null;
+  labels: string[];
+  completion_notes: string | null;
 }
 
 interface TaskList {
@@ -134,6 +137,12 @@ interface Session {
   id: string;
   project_id: string | null;
   status: string;
+}
+
+interface FeatureToggle {
+  feature_key: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
 }
 
 // ── Project initialization ──────────────────────────────────────────
@@ -230,6 +239,61 @@ async function getProjectInfo(projectId: string): Promise<TaskList | null> {
   }
 }
 
+async function getFeatureToggles(): Promise<FeatureToggle[]> {
+  try {
+    const { toggles } = await apiGet<{ toggles: FeatureToggle[] }>('/api/feature-toggles');
+    return toggles;
+  } catch (e) {
+    log('WARN', 'Failed to fetch feature toggles, assuming none enabled', { error: String(e) });
+    return [];
+  }
+}
+
+function isAiReviewEnabled(toggles: FeatureToggle[]): boolean {
+  const toggle = toggles.find(t => t.feature_key === 'ai_review');
+  return toggle?.enabled ?? false;
+}
+
+function getAiReviewConfig(toggles: FeatureToggle[]): { max_review_rounds: number; auto_advance_on_approve: boolean } {
+  const toggle = toggles.find(t => t.feature_key === 'ai_review');
+  const config = toggle?.config as Record<string, unknown> | undefined;
+  return {
+    max_review_rounds: (config?.max_review_rounds as number) ?? 3,
+    auto_advance_on_approve: (config?.auto_advance_on_approve as boolean) ?? true,
+  };
+}
+
+async function getTasksByStatus(status: string): Promise<Map<string, Task[]>> {
+  const { tasks } = await apiGet<{ tasks: Task[] }>(`/api/tasks?status=${status}&limit=100`);
+  const grouped = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    const projectId = task.task_list_id || 'default';
+    if (!grouped.has(projectId)) grouped.set(projectId, []);
+    grouped.get(projectId)!.push(task);
+  }
+
+  return grouped;
+}
+
+function parseRepoSlug(repoUrl: string | null): string | null {
+  if (!repoUrl) return null;
+  // https://github.com/owner/repo.git → owner/repo
+  // https://github.com/owner/repo → owner/repo
+  // git@github.com:owner/repo.git → owner/repo
+  const httpsMatch = repoUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+  if (httpsMatch) return httpsMatch[1];
+  const sshMatch = repoUrl.match(/github\.com:([^/]+\/[^/]+?)(?:\.git)?$/);
+  if (sshMatch) return sshMatch[1];
+  return null;
+}
+
+function parsePrNumber(prUrl: string | null): string | null {
+  if (!prUrl) return null;
+  const match = prUrl.match(/\/pull\/(\d+)/);
+  return match ? match[1] : null;
+}
+
 function generateBranchName(task: Task): string {
   const taskIdShort = task.id.replace('task_', '').slice(0, 8);
   const titleSlug = task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -275,7 +339,7 @@ IMPORTANT: You MUST create the branch, commit, push, and create the PR. The PR U
   ].filter(Boolean).join('\n');
 }
 
-async function startClaudeSession(projectId: string, task: Task): Promise<void> {
+async function startClaudeSession(projectId: string, task: Task, options?: { aiReviewEnabled?: boolean }): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -402,10 +466,14 @@ async function startClaudeSession(projectId: string, task: Task): Promise<void> 
     // Update task status
     try {
       if (success) {
+        const nextStatus = options?.aiReviewEnabled ? 'ai_review' : 'review';
         await apiPatch(`/api/tasks/${task.id}`, {
-          status: 'review',
+          status: nextStatus,
           completion_notes: stdout.slice(-1000),
         });
+        if (nextStatus === 'ai_review') {
+          log('INFO', 'Task moved to ai_review for automated PR review', { taskId: task.id });
+        }
       } else {
         await apiPatch(`/api/tasks/${task.id}`, {
           status: 'todo',
@@ -424,7 +492,477 @@ async function startClaudeSession(projectId: string, task: Task): Promise<void> 
   });
 }
 
+// ── AI Review sessions ──────────────────────────────────────────────
+
+function buildAiReviewPrompt(task: Task, project: TaskList | null, config: { max_review_rounds: number; auto_advance_on_approve: boolean }): string {
+  const repoSlug = parseRepoSlug(project?.repository_url ?? null);
+  const prNumber = parsePrNumber(task.pr_url);
+  const reviewRounds = task.review_rounds || 0;
+
+  if (!repoSlug || !prNumber) {
+    return `ERROR: Cannot review task "${task.title}" — missing repository URL or PR URL.
+Repository URL: ${project?.repository_url || '(none)'}
+PR URL: ${task.pr_url || '(none)'}
+
+Please update the task with a valid pr_url and ensure the project has a repository_url configured.`;
+  }
+
+  return `You are an automated PR reviewer. Review the pull request and post your review to GitHub.
+
+## Task Being Reviewed
+
+**Task ID:** ${task.id}
+**Title:** ${task.title}
+**PR:** ${task.pr_url}
+**Review Round:** ${reviewRounds + 1} of ${config.max_review_rounds}
+
+## Step 1: Review the PR
+
+Use the taskinfa-gh-pr-reviewer skill approach to review this PR:
+
+\`\`\`bash
+# Get PR metadata
+gh pr view ${prNumber} --repo ${repoSlug} --json title,body,author,baseRefName,headRefName,files,additions,deletions,changedFiles
+
+# Get the full diff
+gh pr diff ${prNumber} --repo ${repoSlug}
+
+# Get list of changed files
+gh pr diff ${prNumber} --repo ${repoSlug} --name-only
+\`\`\`
+
+For each changed file, read the full content from the PR's head branch for line-accurate comments:
+
+\`\`\`bash
+# Get the head branch ref
+gh pr view ${prNumber} --repo ${repoSlug} --json headRefName --jq '.headRefName'
+\`\`\`
+
+## Step 2: Analyze the diff
+
+Review every changed file for:
+1. **Bugs and logic errors** — incorrect conditions, off-by-one, null/undefined access, race conditions
+2. **Behavioral regressions** — changes that break existing behavior or API contracts
+3. **Missing error handling** — unhandled promise rejections, missing try/catch
+4. **Security concerns** — XSS, injection, exposed secrets
+5. **Dead code** — unused imports, unreachable branches
+
+## Step 3: Post the review
+
+Create a review JSON and post it:
+
+\`\`\`bash
+cat > /tmp/pr-review.json << 'REVIEW_EOF'
+{
+  "body": "## AI PR Review Summary\\n\\n**Verdict:** [APPROVE | REQUEST_CHANGES]\\n\\n### Overview\\n[summary]\\n\\n### Blocking Issues\\n[list or 'None']\\n\\n### Nits & Suggestions\\n[list or 'None']",
+  "event": "APPROVE or REQUEST_CHANGES",
+  "comments": [
+    {
+      "path": "file.ts",
+      "line": 42,
+      "side": "RIGHT",
+      "body": "**Bug:** description\\n\\n\\\`\\\`\\\`suggestion\\nfix here\\n\\\`\\\`\\\`"
+    }
+  ]
+}
+REVIEW_EOF
+
+gh api repos/${repoSlug}/pulls/${prNumber}/reviews \\
+  --method POST \\
+  --input /tmp/pr-review.json
+
+rm -f /tmp/pr-review.json
+\`\`\`
+
+## Step 4: Report your verdict
+
+After posting the review, update the task based on your verdict:
+
+### If APPROVED (no blocking issues):
+
+\`\`\`bash
+curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status": "${config.auto_advance_on_approve ? 'done' : 'review'}", "completion_notes": "AI review passed (round ${reviewRounds + 1})", "review_rounds": ${reviewRounds + 1}}'
+\`\`\`
+
+### If REQUEST_CHANGES (blocking issues found):
+
+\`\`\`bash
+curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status": "review_rejected", "completion_notes": "AI review requested changes (round ${reviewRounds + 1}): <SUMMARY_OF_ISSUES>", "review_rounds": ${reviewRounds + 1}}'
+\`\`\`
+
+Replace \`<SUMMARY_OF_ISSUES>\` with a brief summary of the blocking issues.
+
+## Rules
+
+- Use the \`event\` field "APPROVE" or "REQUEST_CHANGES" (not "COMMENT")
+- Only use REQUEST_CHANGES for actual bugs, security issues, or broken functionality
+- Style nits alone should NOT block — use APPROVE with nit comments
+- Be constructive — suggest fixes, don't just criticize
+- Post inline comments on specific lines when possible
+- Clean up temp files after posting
+`;
+}
+
+function buildFixReviewPrompt(task: Task, project: TaskList | null): string {
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const memoryPath = join(workDir, '.memory', 'context.md');
+  const claudeMdPath = join(workDir, 'CLAUDE.md');
+  const repoSlug = parseRepoSlug(project?.repository_url ?? null);
+  const prNumber = parsePrNumber(task.pr_url);
+  const branchName = task.branch_name || generateBranchName(task);
+
+  return [
+    `Project: ${project?.name || 'Unknown'}`,
+    existsSync(claudeMdPath) ? `Read ${claudeMdPath} for project rules.` : '',
+    existsSync(memoryPath) ? `Read ${memoryPath} for current context.` : '',
+    '',
+    `Task: Fix review feedback for "${task.title}"`,
+    '',
+    '## Context',
+    `This task was reviewed by the AI reviewer and changes were requested.`,
+    task.completion_notes ? `**Review feedback:** ${task.completion_notes}` : '',
+    '',
+    '## Step 1: Read the PR review comments',
+    '',
+    repoSlug && prNumber ? `\`\`\`bash
+# Get review comments
+gh pr view ${prNumber} --repo ${repoSlug} --json reviews --jq '.reviews[-1].body'
+
+# Get inline review comments
+gh api repos/${repoSlug}/pulls/${prNumber}/comments --jq '.[] | "\\(.path):\\(.line) — \\(.body)"'
+\`\`\`` : 'PR URL not available — check task.completion_notes for feedback.',
+    '',
+    '## Step 2: Fix the issues',
+    '',
+    `Checkout the existing branch and fix the issues raised in the review:`,
+    '',
+    `\`\`\`bash`,
+    `git checkout ${branchName}`,
+    `git pull origin ${branchName}`,
+    `\`\`\``,
+    '',
+    'Make the necessary fixes based on the review feedback.',
+    '',
+    '## Step 3: Push the fixes',
+    '',
+    `\`\`\`bash`,
+    `git add -A`,
+    `git commit -m "fix: address review feedback for ${task.title.replace(/"/g, '\\"')}"`,
+    `git push origin ${branchName}`,
+    `\`\`\``,
+    '',
+    'Do NOT create a new PR — push to the existing branch.',
+    '',
+    '## Step 4: Update the task',
+    '',
+    `After pushing fixes, move the task back to ai_review:`,
+    '',
+    `\`\`\`bash`,
+    `curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\`,
+    `  -H "Authorization: Bearer $KANBAN_API_KEY" \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -d '{"status": "ai_review", "completion_notes": "Fixes pushed for re-review"}'`,
+    `\`\`\``,
+    '',
+    'When done, update .memory/context.md with what you accomplished.',
+  ].filter(Boolean).join('\n');
+}
+
+async function startAiReviewSession(projectId: string, task: Task, config: { max_review_rounds: number; auto_advance_on_approve: boolean }): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping AI review', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping AI review', { projectId });
+    return;
+  }
+
+  const reviewRounds = task.review_rounds || 0;
+  if (reviewRounds >= config.max_review_rounds) {
+    log('WARN', 'Task exceeded max review rounds, escalating to human review', {
+      taskId: task.id, reviewRounds, maxRounds: config.max_review_rounds,
+    });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: 'review',
+        completion_notes: `Escalated to human review after ${reviewRounds} AI review rounds`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to escalate task to human review', { error: String(e) });
+    }
+    return;
+  }
+
+  if (!task.pr_url) {
+    log('WARN', 'Task has no PR URL, cannot run AI review', { taskId: task.id });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: 'review',
+        completion_notes: 'Moved to human review: no PR URL for AI review',
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to move task to review', { error: String(e) });
+    }
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const systemPrompt = buildAiReviewPrompt(task, project, config);
+
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `AI Review: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting AI review session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title, reviewRound: reviewRounds + 1,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Starting AI review (round ${reviewRounds + 1}): ${task.title}`,
+    metadata: { session_type: 'ai_review' },
+  });
+
+  const claude = spawn('claude', [
+    '-p', systemPrompt,
+    '--dangerously-skip-permissions',
+    '--output-format', 'text',
+  ], {
+    cwd: workDir,
+    env: {
+      ...process.env,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+
+  let stdout = '';
+  let stderr = '';
+
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'AI review session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `AI Review completed: ${task.title}`
+          : `AI Review failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update AI review session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `AI Review completed: ${task.title}`
+          : `AI Review failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'ai_review' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report AI review session end', { error: String(e) });
+    }
+
+    // On failure, move to human review as fallback
+    if (!success) {
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, {
+          status: 'review',
+          completion_notes: `AI review session failed (exit ${code}), escalated to human review`,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to escalate task after AI review failure', { error: String(e) });
+      }
+    }
+    // On success, the prompt instructs Claude to update the task status
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn AI review Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
+async function startFixReviewSession(projectId: string, task: Task): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping fix review', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping fix review', { projectId });
+    return;
+  }
+
+  if (task.error_count >= MAX_RETRIES) {
+    log('WARN', 'Review-rejected task exceeded retry limit, escalating', { taskId: task.id, errorCount: task.error_count });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: 'review',
+        completion_notes: `Escalated to human review after ${task.error_count} fix attempts`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to escalate task', { error: String(e) });
+    }
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const systemPrompt = buildFixReviewPrompt(task, project);
+
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `Fixing review feedback: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting fix review session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Fixing review feedback: ${task.title}`,
+    metadata: { session_type: 'fix_review' },
+  });
+
+  // Move task to in_progress while fixing
+  try {
+    await apiPatch(`/api/tasks/${task.id}`, { status: 'in_progress', assigned_to: 'orchestrator' });
+  } catch (e) {
+    log('WARN', 'Failed to claim review_rejected task', { taskId: task.id });
+  }
+
+  const claude = spawn('claude', [
+    '-p', systemPrompt,
+    '--dangerously-skip-permissions',
+    '--output-format', 'text',
+  ], {
+    cwd: workDir,
+    env: {
+      ...process.env,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+
+  let stdout = '';
+  let stderr = '';
+
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'Fix review session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `Fixed review feedback: ${task.title}`
+          : `Fix review failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update fix review session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `Fixed review feedback: ${task.title}`
+          : `Fix review failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'fix_review' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report fix review session end', { error: String(e) });
+    }
+
+    // On failure, increment error count and move back to review_rejected
+    if (!success) {
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, {
+          status: 'review_rejected',
+          error_count: task.error_count + 1,
+          assigned_to: null,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to update task after fix review failure', { error: String(e) });
+      }
+    }
+    // On success, the prompt instructs Claude to move task to ai_review
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn fix review Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
 // ── Main loop ───────────────────────────────────────────────────────
+
+function sortByPriority(tasks: Task[]): Task[] {
+  const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+  return tasks.sort((a, b) =>
+    (priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2) -
+    (priorityOrder[b.priority as keyof typeof priorityOrder] ?? 2)
+  );
+}
 
 async function pollCycle() {
   log('INFO', `Poll cycle starting (${activeSessions.size}/${MAX_CONCURRENT} active sessions)`);
@@ -433,7 +971,11 @@ async function pollCycle() {
     // Initialize any new projects (clone repos) before processing tasks
     await initializeProjects();
 
-    const projectTasks = await getProjectTasks();
+    // Fetch feature toggles
+    const toggles = await getFeatureToggles();
+    const aiReviewEnabled = isAiReviewEnabled(toggles);
+    const aiReviewConfig = aiReviewEnabled ? getAiReviewConfig(toggles) : null;
+
     const activeProjectIds = await getActiveSessions();
 
     // Also add locally tracked sessions
@@ -442,6 +984,45 @@ async function pollCycle() {
     }
 
     let started = 0;
+
+    // Priority 1: Process review_rejected tasks (highest priority — right-to-left column priority)
+    if (aiReviewEnabled) {
+      const rejectedTasks = await getTasksByStatus('review_rejected');
+      for (const [projectId, tasks] of rejectedTasks) {
+        if (activeProjectIds.has(projectId)) continue;
+        if (activeSessions.size >= MAX_CONCURRENT) break;
+
+        const task = sortByPriority(tasks)[0];
+        try {
+          await startFixReviewSession(projectId, task);
+          started++;
+          activeProjectIds.add(projectId);
+        } catch (e) {
+          log('ERROR', 'Failed to start fix review session', { projectId, taskId: task.id, error: String(e) });
+        }
+      }
+    }
+
+    // Priority 2: Process ai_review tasks
+    if (aiReviewEnabled && aiReviewConfig) {
+      const aiReviewTasks = await getTasksByStatus('ai_review');
+      for (const [projectId, tasks] of aiReviewTasks) {
+        if (activeProjectIds.has(projectId)) continue;
+        if (activeSessions.size >= MAX_CONCURRENT) break;
+
+        const task = sortByPriority(tasks)[0];
+        try {
+          await startAiReviewSession(projectId, task, aiReviewConfig);
+          started++;
+          activeProjectIds.add(projectId);
+        } catch (e) {
+          log('ERROR', 'Failed to start AI review session', { projectId, taskId: task.id, error: String(e) });
+        }
+      }
+    }
+
+    // Priority 3: Process todo tasks
+    const projectTasks = await getProjectTasks();
     for (const [projectId, tasks] of projectTasks) {
       if (activeProjectIds.has(projectId)) {
         log('INFO', 'Project already has active session, skipping', { projectId });
@@ -453,17 +1034,11 @@ async function pollCycle() {
         break;
       }
 
-      // Pick highest priority task
-      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-      tasks.sort((a, b) =>
-        (priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2) -
-        (priorityOrder[b.priority as keyof typeof priorityOrder] ?? 2)
-      );
-
-      const task = tasks[0];
+      const task = sortByPriority(tasks)[0];
       try {
-        await startClaudeSession(projectId, task);
+        await startClaudeSession(projectId, task, { aiReviewEnabled });
         started++;
+        activeProjectIds.add(projectId);
       } catch (e) {
         log('ERROR', 'Failed to start session', { projectId, taskId: task.id, error: String(e) });
       }

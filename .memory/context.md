@@ -1,45 +1,34 @@
 # Project Context
 
-## Last Updated: 2026-02-14
+## Last Updated: 2026-02-15
 
 ## Recent Changes
+
+### AI Review Feature in Orchestrator (feat: ai-review)
+- **Updated** `scripts/orchestrator.ts`:
+  - Added `FeatureToggle` interface, `getFeatureToggles()`, `isAiReviewEnabled()`, `getAiReviewConfig()` helpers
+  - Added `getTasksByStatus()` generic task fetcher, `parseRepoSlug()`, `parsePrNumber()` utilities
+  - Added `review_rounds` and `completion_notes` fields to `Task` interface, `labels` field
+  - Modified `startClaudeSession()` success handler: moves task to `ai_review` instead of `review` when toggle is ON
+  - Added `buildAiReviewPrompt()`, `buildFixReviewPrompt()`, `startAiReviewSession()`, `startFixReviewSession()`
+  - Updated `pollCycle()` with priority order: review_rejected > ai_review > todo
+  - Added `sortByPriority()` helper to deduplicate priority sorting logic
+  - AI review config: `max_review_rounds` (default 3), `auto_advance_on_approve` (default true)
 
 ### Dynamic Kanban Board Columns (feat: dynamic-kanban-columns)
 - **Updated** `packages/shared/src/types/index.ts`:
   - Expanded `TaskStatus` type with new values: `refinement`, `ai_review`, `review_rejected`
-  - Added `StatusColumn` interface and `getStatusColumns()` utility that builds dynamic columns based on enabled feature toggles
-  - Added `getValidStatuses()` utility that returns valid statuses for a workspace
-  - Column insertion rules: `refinement` between Backlog/To Do, `review_rejected` between To Do/In Progress, `ai_review` after In Progress
+  - Added `StatusColumn` interface and `getStatusColumns()` utility
+  - Added `getValidStatuses()` utility
   - Full order: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
-- **Created** `packages/dashboard/migrations/011_dynamic_task_statuses.sql`:
-  - Recreates tasks table with expanded CHECK constraint for new status values
-  - Preserves all existing data and indexes
-- **Updated** `packages/dashboard/schema.sql` — Updated CHECK constraint for new statuses
-- **Refactored** `packages/dashboard/src/components/KanbanBoard.tsx`:
-  - Fetches feature toggles from `GET /api/feature-toggles` on mount
-  - Dynamically builds `statusColumns` array using `getStatusColumns()` from shared package
-  - Passes `statusColumns` to `TaskModal` for consistent status options
-- **Updated** `packages/dashboard/src/components/TaskModal.tsx`:
-  - Accepts optional `statusColumns` prop for dynamic status dropdown
-  - Falls back to default columns when prop not provided
-- **Updated** `packages/dashboard/src/app/api/tasks/[id]/route.ts`:
-  - PATCH endpoint now dynamically validates status values based on workspace's enabled feature toggles
-  - Queries `feature_toggles` table to determine valid statuses before validation
+- **Created** `packages/dashboard/migrations/011_dynamic_task_statuses.sql`
+- **Updated** KanbanBoard, TaskModal, and tasks API routes for dynamic statuses
 
 ### Feature Toggle System (feat: feature-toggles)
-- **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table:
-  - Fields: `id`, `workspace_id`, `feature_key`, `enabled`, `config` (JSON), `created_at`, `updated_at`
-  - Unique constraint on `(workspace_id, feature_key)`
-  - Indexes on `workspace_id` and `(workspace_id, feature_key)`
-- **Created** `packages/dashboard/src/app/api/feature-toggles/route.ts` — `GET /api/feature-toggles`:
-  - Lists all toggles for workspace, returns defaults for features not yet in DB
-  - Supports both session cookie and API key auth
-- **Created** `packages/dashboard/src/app/api/feature-toggles/[feature_key]/route.ts` — `PATCH /api/feature-toggles/:feature_key`:
-  - Enable/disable a toggle and update config via upsert
-  - Validates feature_key against known keys (refinement, ai_review)
+- **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table
+- **Created** `GET /api/feature-toggles` and `PATCH /api/feature-toggles/:feature_key` routes
 - **Updated** `packages/shared/src/types/index.ts` — Added feature toggle types:
   - `FeatureKey`, `FeatureToggle`, `RefinementConfig`, `AiReviewConfig`, `FeatureConfigMap`
-  - `ListFeatureTogglesResponse`, `UpdateFeatureToggleRequest`, `UpdateFeatureToggleResponse`
   - `DEFAULT_FEATURE_CONFIGS` constant with default configs for each feature
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
