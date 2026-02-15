@@ -1,6 +1,6 @@
 {
   "name": "taskinfa-kanban",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "private": true,
   "description": "Autonomous task automation system — kanban dashboard + Telegram bot + Claude Code orchestration",
   "author": "SECAN",
