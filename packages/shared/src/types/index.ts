@@ -233,6 +233,32 @@ export interface UpdateNotificationConfigRequest {
 
 // API request/response types
 
+export type TaskSortField = 'created_at' | 'updated_at' | 'priority' | 'title' | 'order';
+export type SortOrder = 'asc' | 'desc';
+
+export interface TaskFilters {
+  q?: string;
+  task_list_id?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  label?: string;
+  assignee?: string;
+  created_after?: string;
+  created_before?: string;
+  sort?: TaskSortField;
+  order?: SortOrder;
+}
+
+export interface SavedFilter {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  name: string;
+  filters: string; // JSON string of TaskFilters
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ListTasksRequest {
   workspace_id?: string;
   task_list_id?: string;
@@ -240,6 +266,13 @@ export interface ListTasksRequest {
   priority?: TaskPriority;
   assigned_to?: string | null;
   limit?: number;
+  q?: string;
+  label?: string;
+  assignee?: string;
+  created_after?: string;
+  created_before?: string;
+  sort?: TaskSortField;
+  order?: SortOrder;
 }
 
 export interface ListTasksResponse {

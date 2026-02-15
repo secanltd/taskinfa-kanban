@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb, query, queryOne } from '@/lib/db/client';
@@ -150,7 +151,9 @@ export default async function DashboardPage() {
             </div>
           </div>
         ) : (
-          <KanbanBoard initialTasks={parsedTasks} taskLists={taskLists} />
+          <Suspense fallback={<div className="text-terminal-muted text-center py-8">Loading board...</div>}>
+            <KanbanBoard initialTasks={parsedTasks} taskLists={taskLists} />
+          </Suspense>
         )}
       </main>
 
