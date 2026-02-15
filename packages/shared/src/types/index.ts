@@ -2,7 +2,7 @@
 
 export type TaskStatus = 'backlog' | 'refinement' | 'todo' | 'review_rejected' | 'in_progress' | 'ai_review' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type CommentType = 'progress' | 'question' | 'summary' | 'error';
+export type CommentType = 'progress' | 'question' | 'summary' | 'error' | 'human_message';
 export type AuthorType = 'bot' | 'user';
 
 export interface Workspace {
@@ -50,6 +50,9 @@ export interface Task {
   // PR integration
   pr_url: string | null;
   branch_name: string | null;
+
+  // Claude session resumption
+  claude_session_id: string | null;
 
   // Time tracking
   created_at: string;

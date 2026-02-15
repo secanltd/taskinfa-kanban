@@ -123,6 +123,7 @@ interface Task {
   review_rounds: number;
   pr_url: string | null;
   branch_name: string | null;
+  claude_session_id: string | null;
   labels: string[];
   completion_notes: string | null;
   is_blocked?: boolean;
@@ -403,13 +404,114 @@ function generateBranchName(task: Task): string {
   return `task/${taskIdShort}/${titleSlug}`;
 }
 
+async function postBotComment(taskId: string, content: string, commentType: string = 'summary'): Promise<void> {
+  try {
+    await apiPost(`/api/tasks/${taskId}/comments`, {
+      author: 'orchestrator',
+      author_type: 'bot',
+      content,
+      comment_type: commentType,
+    });
+  } catch (e) {
+    log('ERROR', 'Failed to post bot comment', { taskId, error: String(e) });
+  }
+}
+
+function buildClaudeArgs(task: Task, prompt: string): string[] {
+  const args: string[] = [];
+  if (task.claude_session_id) {
+    args.push('--resume', task.claude_session_id);
+  }
+  args.push('-p', prompt, '--dangerously-skip-permissions', '--output-format', 'json');
+  return args;
+}
+
+async function saveClaudeSessionId(task: Task, stdout: string): Promise<void> {
+  try {
+    const output = JSON.parse(stdout);
+    const sessionId = output.session_id;
+    if (sessionId && sessionId !== task.claude_session_id) {
+      await apiPatch(`/api/tasks/${task.id}`, { claude_session_id: sessionId });
+      log('INFO', 'Saved Claude session ID to task', { taskId: task.id, claudeSessionId: sessionId });
+    }
+  } catch {
+    // Non-JSON output or parse error, skip
+  }
+}
+
+function extractTextFromJsonOutput(stdout: string): string {
+  try {
+    const output = JSON.parse(stdout);
+    // Claude JSON output has a 'result' field with the text content
+    return output.result || output.text || stdout;
+  } catch {
+    return stdout;
+  }
+}
+
 function buildSystemPrompt(task: Task, project: TaskList | null): string {
   const workDir = project?.working_directory || WORKSPACE_ROOT;
   const memoryPath = join(workDir, '.memory', 'context.md');
   const claudeMdPath = join(workDir, 'CLAUDE.md');
-  const branchName = generateBranchName(task);
+  const branchName = task.branch_name || generateBranchName(task);
 
-  const gitWorkflow = GH_TOKEN ? `
+  // Build context preamble for task awareness
+  const taskContext = `## Task Context
+- Previous attempts: ${task.error_count}
+- Branch: ${task.branch_name || 'none (fresh task)'}
+- PR: ${task.pr_url || 'none'}
+- Last notes: ${task.completion_notes || 'none'}
+
+Before starting, assess the current state:
+1. ${task.branch_name ? `Check if branch exists: git branch -a | grep ${task.branch_name}` : 'This is a fresh task — no existing branch.'}
+2. ${task.pr_url ? `Check PR status: the PR is at ${task.pr_url}` : 'No PR exists yet.'}
+3. Review previous session notes above
+4. Read task comments for history from previous sessions:
+   curl -s "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" -H "Authorization: Bearer $KANBAN_API_KEY" | head -c 2000
+Then decide: continue existing work or start fresh.
+`;
+
+  // Build git workflow based on existing branch/PR state
+  let gitWorkflow = '';
+  if (GH_TOKEN) {
+    if (task.pr_url && task.branch_name) {
+      // Existing branch AND PR — continue working on it
+      gitWorkflow = `
+## Git Workflow
+
+An open PR already exists at ${task.pr_url} on branch \`${task.branch_name}\`.
+
+1. Checkout existing branch: git checkout ${task.branch_name} && git pull origin ${task.branch_name}
+2. Make your changes on this branch
+3. Stage and commit: git add -A && git commit -m "fix: continue work on ${task.title.replace(/"/g, '\\"')}"
+4. Push to existing branch: git push origin ${task.branch_name}
+
+IMPORTANT: Do NOT create a new branch or a new PR. Push to the existing branch \`${task.branch_name}\`.
+`;
+    } else if (task.branch_name) {
+      // Existing branch but no PR — checkout branch, create PR when done
+      gitWorkflow = `
+## Git Workflow
+
+An existing branch \`${task.branch_name}\` exists for this task but no PR has been created yet.
+
+1. Checkout existing branch: git checkout ${task.branch_name} && git pull origin ${task.branch_name}
+2. Make your changes on this branch
+3. Stage and commit: git add -A && git commit -m "feat: ${task.title.replace(/"/g, '\\"')}"
+4. Push: git push -u origin ${task.branch_name}
+5. Create PR: gh pr create --title "${task.title}" --body "Automated PR for task ${task.id}"
+6. Capture the PR URL from the gh output, then update the task:
+   curl -s -X PATCH "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID" \\
+     -H "Authorization: Bearer $KANBAN_API_KEY" \\
+     -H "Content-Type: application/json" \\
+     -d '{"pr_url":"<PR_URL>"}'
+   (Replace <PR_URL> with the actual URL returned by gh pr create)
+
+IMPORTANT: Do NOT create a new branch. Use the existing branch \`${task.branch_name}\`.
+`;
+    } else {
+      // Fresh task — create new branch and PR
+      gitWorkflow = `
 ## Git Workflow
 
 After completing the task, create a PR for review:
@@ -427,18 +529,35 @@ After completing the task, create a PR for review:
    (Replace <PR_URL> with the actual URL returned by gh pr create)
 
 IMPORTANT: You MUST create the branch, commit, push, and create the PR. The PR URL must be saved to the task.
-` : '';
+`;
+    }
+  }
 
   return [
     `Project: ${project?.name || 'Unknown'}`,
     existsSync(claudeMdPath) ? `Read ${claudeMdPath} for project rules.` : '',
     existsSync(memoryPath) ? `Read ${memoryPath} for current context.` : '',
     '',
+    taskContext,
     `Task: ${task.title}`,
     task.description || '',
     '',
     'Do the task. When done, update .memory/context.md with what you accomplished.',
     gitWorkflow,
+    `
+## Post Summary Comment
+
+When you finish (success or failure), post a summary comment to the task:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"author":"orchestrator","author_type":"bot","content":"<SUMMARY_OF_WHAT_YOU_DID>","comment_type":"summary"}'
+\`\`\`
+
+Replace <SUMMARY_OF_WHAT_YOU_DID> with a brief summary including PR URL if you created one.
+`,
   ].filter(Boolean).join('\n');
 }
 
@@ -497,11 +616,8 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
 
   // Spawn Claude Code (skip-permissions needed for non-interactive sessions
   // that must run bash commands like curl for progress reporting)
-  const claude = spawn('claude', [
-    '-p', systemPrompt,
-    '--dangerously-skip-permissions',
-    '--output-format', 'text',
-  ], {
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...process.env,
@@ -533,12 +649,31 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
 
   claude.on('close', async (code) => {
     activeSessions.delete(projectId);
+
+    // Handle --resume failure: if exit code indicates session not found, retry without resume
+    if (code !== 0 && task.claude_session_id && stderr.includes('session')) {
+      log('WARN', 'Claude --resume may have failed, retrying without resume', { taskId: task.id });
+      task.claude_session_id = null;
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, { claude_session_id: null });
+        await startClaudeSession(projectId, task, options);
+        return;
+      } catch (retryErr) {
+        log('ERROR', 'Retry without resume also failed', { error: String(retryErr) });
+      }
+    }
+
     const success = code === 0;
     const finalStatus = success ? 'completed' : 'error';
 
     log(success ? 'INFO' : 'ERROR', `Claude session ended`, {
       sessionId, projectId, taskId: task.id, exitCode: code,
     });
+
+    // Save Claude session ID for future resumption
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
 
     // Update session
     try {
@@ -568,11 +703,12 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
 
     // Update task status
     try {
+      const outputText = extractTextFromJsonOutput(stdout);
       if (success) {
         const nextStatus = options?.aiReviewEnabled ? 'ai_review' : 'review';
         await apiPatch(`/api/tasks/${task.id}`, {
           status: nextStatus,
-          completion_notes: stdout.slice(-1000),
+          completion_notes: outputText.slice(-1000),
         });
         if (nextStatus === 'ai_review') {
           log('INFO', 'Task moved to ai_review for automated PR review', { taskId: task.id });
@@ -587,6 +723,12 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     } catch (e) {
       log('ERROR', 'Failed to update task', { error: String(e) });
     }
+
+    // Post bot comment with session result
+    const commentContent = success
+      ? `Session completed successfully. Task moved to ${options?.aiReviewEnabled ? 'ai_review' : 'review'}.`
+      : `Session failed (exit ${code}). Error count: ${task.error_count + 1}. ${stderr.slice(-300)}`;
+    await postBotComment(task.id, commentContent, success ? 'summary' : 'error');
   });
 
   claude.on('error', (err) => {
@@ -774,6 +916,17 @@ gh api repos/${repoSlug}/pulls/${prNumber}/comments --jq '.[] | "\\(.path):\\(.l
     `\`\`\``,
     '',
     'When done, update .memory/context.md with what you accomplished.',
+    '',
+    '## Post Summary Comment',
+    '',
+    'After pushing fixes, post a summary comment:',
+    '',
+    '```bash',
+    `curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\`,
+    '  -H "Authorization: Bearer $KANBAN_API_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d \'{"author":"orchestrator","author_type":"bot","content":"<SUMMARY>","comment_type":"summary"}\'',
+    '```',
   ].filter(Boolean).join('\n');
 }
 
@@ -842,11 +995,8 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
     metadata: { session_type: 'ai_review' },
   });
 
-  const claude = spawn('claude', [
-    '-p', systemPrompt,
-    '--dangerously-skip-permissions',
-    '--output-format', 'text',
-  ], {
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...process.env,
@@ -875,6 +1025,11 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
     log(success ? 'INFO' : 'ERROR', 'AI review session ended', {
       sessionId, projectId, taskId: task.id, exitCode: code,
     });
+
+    // Save Claude session ID for future resumption
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
 
     try {
       await apiPatch(`/api/sessions/${sessionId}`, {
@@ -913,6 +1068,12 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
       }
     }
     // On success, the prompt instructs Claude to update the task status
+
+    // Post bot comment with review result
+    const reviewComment = success
+      ? `AI review session completed for "${task.title}".`
+      : `AI review session failed (exit ${code}). Escalated to human review.`;
+    await postBotComment(task.id, reviewComment, success ? 'summary' : 'error');
   });
 
   claude.on('error', (err) => {
@@ -977,11 +1138,8 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
     log('WARN', 'Failed to claim review_rejected task', { taskId: task.id });
   }
 
-  const claude = spawn('claude', [
-    '-p', systemPrompt,
-    '--dangerously-skip-permissions',
-    '--output-format', 'text',
-  ], {
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...process.env,
@@ -1010,6 +1168,11 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
     log(success ? 'INFO' : 'ERROR', 'Fix review session ended', {
       sessionId, projectId, taskId: task.id, exitCode: code,
     });
+
+    // Save Claude session ID for future resumption
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
 
     try {
       await apiPatch(`/api/sessions/${sessionId}`, {
@@ -1049,6 +1212,12 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
       }
     }
     // On success, the prompt instructs Claude to move task to ai_review
+
+    // Post bot comment with fix review result
+    const fixComment = success
+      ? `Fix review session completed. Fixes pushed for re-review.`
+      : `Fix review session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+    await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
   });
 
   claude.on('error', (err) => {
@@ -1168,11 +1337,8 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
   });
 
   // Spawn Claude with restricted permissions — no GH_TOKEN, only API access
-  const claude = spawn('claude', [
-    '-p', systemPrompt,
-    '--dangerously-skip-permissions',
-    '--output-format', 'text',
-  ], {
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...process.env,
@@ -1187,9 +1353,10 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
   claude.stdin?.end();
   activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
 
+  let stdout = '';
   let stderr = '';
 
-  claude.stdout?.on('data', () => {}); // consume stdout
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
   claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
   claude.on('close', async (code) => {
@@ -1199,6 +1366,11 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
     log(success ? 'INFO' : 'ERROR', 'Refinement session ended', {
       sessionId, projectId, taskId: task.id, exitCode: code,
     });
+
+    // Save Claude session ID for future resumption
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
 
     try {
       await apiPatch(`/api/sessions/${sessionId}`, {
@@ -1319,6 +1491,211 @@ async function checkStuckSessions(): Promise<void> {
   }
 }
 
+// ── Message sessions (async chat) ───────────────────────────────────
+
+interface TaskComment {
+  id: string;
+  task_id: string;
+  author: string;
+  author_type: string;
+  content: string;
+  comment_type: string;
+  created_at: string;
+}
+
+async function getPendingMessageTasks(): Promise<Task[]> {
+  try {
+    const { tasks } = await apiGet<{ tasks: Task[] }>('/api/tasks/pending-messages');
+    return tasks;
+  } catch (e) {
+    log('WARN', 'Failed to fetch pending message tasks', { error: String(e) });
+    return [];
+  }
+}
+
+function buildMessageSessionPrompt(task: Task, project: TaskList | null, comments: TaskComment[]): string {
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const claudeMdPath = join(workDir, 'CLAUDE.md');
+  const memoryPath = join(workDir, '.memory', 'context.md');
+
+  // Format comment history as a chat log
+  const chatLog = comments
+    .map(c => `[${c.created_at}] ${c.author} (${c.author_type}): ${c.content}`)
+    .join('\n');
+
+  // Find the latest human message
+  const latestUserComment = [...comments].reverse().find(c => c.author_type === 'user');
+
+  return [
+    `Project: ${project?.name || 'Unknown'}`,
+    existsSync(claudeMdPath) ? `Read ${claudeMdPath} for project rules.` : '',
+    existsSync(memoryPath) ? `Read ${memoryPath} for current context.` : '',
+    '',
+    `## Task: ${task.title}`,
+    task.description || '',
+    '',
+    `**Status:** ${task.status}`,
+    task.branch_name ? `**Branch:** ${task.branch_name}` : '',
+    task.pr_url ? `**PR:** ${task.pr_url}` : '',
+    '',
+    '## Comment History',
+    '',
+    chatLog || '(no previous comments)',
+    '',
+    '## Current Request',
+    '',
+    latestUserComment ? latestUserComment.content : '(no message found)',
+    '',
+    '## Instructions',
+    '',
+    'A human has sent a message on this task. You have full access to the codebase.',
+    '- If the user asks a question, respond via comment.',
+    '- If they ask for an action (code changes, investigation, etc.), do it and comment back with results.',
+    '- If you make code changes, commit and push to the existing branch if one exists.',
+    '',
+    'When done, post your response as a comment:',
+    '',
+    '```bash',
+    `curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\`,
+    '  -H "Authorization: Bearer $KANBAN_API_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d \'{"author":"orchestrator","author_type":"bot","content":"<YOUR_RESPONSE>","comment_type":"summary"}\'',
+    '```',
+    '',
+    'Replace <YOUR_RESPONSE> with your actual response to the user.',
+  ].filter(Boolean).join('\n');
+}
+
+async function startMessageSession(projectId: string, task: Task): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping message session', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping message session', { projectId });
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+
+  // Fetch comments for context
+  let comments: TaskComment[] = [];
+  try {
+    const { comments: fetchedComments } = await apiGet<{ comments: TaskComment[] }>(
+      `/api/tasks/${task.id}/comments?limit=50`
+    );
+    // Reverse to get chronological order (API returns newest first)
+    comments = fetchedComments.reverse();
+  } catch (e) {
+    log('WARN', 'Failed to fetch task comments for message session', { error: String(e) });
+  }
+
+  const systemPrompt = buildMessageSessionPrompt(task, project, comments);
+
+  // Register session with API
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `Responding to message on: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting message session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Responding to user message on: ${task.title}`,
+    metadata: { session_type: 'message' },
+  });
+
+  // Use --resume if we have a claude_session_id (full AI memory of previous work)
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
+    cwd: workDir,
+    env: {
+      ...process.env,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
+
+  let stdout = '';
+  let stderr = '';
+
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'Message session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    // Save Claude session ID for future resumption
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `Responded to message on: ${task.title}`
+          : `Message session failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update message session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `Responded to message on: ${task.title}`
+          : `Message session failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'message' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report message session end', { error: String(e) });
+    }
+
+    // On failure, post an error comment so the user knows
+    if (!success) {
+      await postBotComment(
+        task.id,
+        `Failed to process your message (session error, exit ${code}). Please try again or check with a human.`,
+        'error'
+      );
+    }
+    // On success, the prompt instructs Claude to post a response comment
+    // Do NOT change task status — message sessions don't modify workflow state
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn message session Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
 // ── Main loop ───────────────────────────────────────────────────────
 
 function sortByPriority(tasks: Task[]): Task[] {
@@ -1353,6 +1730,22 @@ async function pollCycle() {
     }
 
     let started = 0;
+
+    // Priority 0 (highest): Process pending user messages (async chat)
+    const pendingMessages = await getPendingMessageTasks();
+    for (const task of pendingMessages) {
+      const projectId = task.task_list_id || 'default';
+      if (activeProjectIds.has(projectId)) continue;
+      if (activeSessions.size >= MAX_CONCURRENT) break;
+
+      try {
+        await startMessageSession(projectId, task);
+        started++;
+        activeProjectIds.add(projectId);
+      } catch (e) {
+        log('ERROR', 'Failed to start message session', { taskId: task.id, error: String(e) });
+      }
+    }
 
     // Priority 1: Process review_rejected tasks (highest priority — right-to-left column priority)
     if (aiReviewEnabled) {
