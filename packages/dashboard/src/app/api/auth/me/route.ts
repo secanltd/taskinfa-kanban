@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, queryOne } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
+import { createErrorResponse } from '@/lib/utils/errors';
 import type { GetMeResponse, User, Workspace } from '@taskinfa/shared';
 
 
@@ -60,10 +61,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
-    console.error('Get me error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'get_current_user' });
   }
 }

@@ -87,9 +87,31 @@ const headers = {
   'Authorization': `Bearer ${API_KEY}`,
 };
 
+async function parseApiError(method: string, path: string, res: Response): Promise<string> {
+  try {
+    const body = await res.text();
+    // Try to extract structured error message from JSON response
+    try {
+      const json = JSON.parse(body) as { error?: string; category?: string };
+      const parts = [`API ${method} ${path} failed (${res.status})`];
+      if (json.error) parts.push(json.error);
+      if (json.category) parts.push(`[${json.category}]`);
+      return parts.join(': ');
+    } catch {
+      return `API ${method} ${path} failed (${res.status}): ${body.slice(0, 500)}`;
+    }
+  } catch {
+    return `API ${method} ${path} failed (${res.status})`;
+  }
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { headers });
-  if (!res.ok) throw new Error(`API GET ${path} failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const errorMsg = await parseApiError('GET', path, res);
+    log('ERROR', errorMsg);
+    throw new Error(errorMsg);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -99,7 +121,11 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
     headers,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API POST ${path} failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const errorMsg = await parseApiError('POST', path, res);
+    log('ERROR', errorMsg);
+    throw new Error(errorMsg);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -109,7 +135,11 @@ async function apiPatch<T>(path: string, body: Record<string, unknown>): Promise
     headers,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API PATCH ${path} failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const errorMsg = await parseApiError('PATCH', path, res);
+    log('ERROR', errorMsg);
+    throw new Error(errorMsg);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -302,7 +332,8 @@ async function getProjectInfo(projectId: string): Promise<TaskList | null> {
   try {
     const { task_list } = await apiGet<{ task_list: TaskList }>(`/api/task-lists/${projectId}`);
     return task_list;
-  } catch {
+  } catch (e) {
+    log('WARN', 'Failed to fetch project info', { projectId, error: String(e) });
     return null;
   }
 }

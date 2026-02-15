@@ -6,6 +6,16 @@ import { getStatusColumns } from '@taskinfa/shared';
 import { formatWorkerName } from '@/utils/formatWorkerName';
 import Modal, { ModalHeader, ModalFooter } from './Modal';
 
+/** Extract error message from a failed API response */
+async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { error?: string };
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 interface TaskDetails extends Task {
   subtasks?: Task[];
   dependencies?: TaskDependency[];
@@ -126,14 +136,17 @@ export default function TaskModal({
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to update task');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to update task');
+        throw new Error(msg);
+      }
 
       const data = await response.json() as { task: Task };
       onUpdate(data.task);
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating task:', error);
-      alert('Failed to update task. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to update task');
     } finally {
       setIsSaving(false);
     }
@@ -146,13 +159,16 @@ export default function TaskModal({
         method: 'DELETE',
       });
 
-      if (!response.ok) throw new Error('Failed to delete task');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to delete task');
+        throw new Error(msg);
+      }
 
       onDelete(task.id);
       onClose();
     } catch (error) {
       console.error('Error deleting task:', error);
-      alert('Failed to delete task. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to delete task');
     } finally {
       setIsDeleting(false);
     }
@@ -176,13 +192,16 @@ export default function TaskModal({
         body: JSON.stringify({ error_count: 0 }),
       });
 
-      if (!response.ok) throw new Error('Failed to reset error count');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to reset error count');
+        throw new Error(msg);
+      }
 
       const data = await response.json() as { task: Task };
       onUpdate(data.task);
     } catch (error) {
       console.error('Error resetting error count:', error);
-      alert('Failed to reset error count. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to reset error count');
     } finally {
       setIsResettingErrors(false);
     }
@@ -231,13 +250,16 @@ export default function TaskModal({
           comment_type: 'human_message',
         }),
       });
-      if (!res.ok) throw new Error('Failed to post comment');
+      if (!res.ok) {
+        const msg = await getApiErrorMessage(res, 'Failed to post comment');
+        throw new Error(msg);
+      }
       const data = await res.json() as { comment: TaskComment };
       setComments(prev => [data.comment, ...prev]);
       setNewComment('');
     } catch (error) {
       console.error('Error posting comment:', error);
-      alert('Failed to post comment. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to post comment');
     } finally {
       setIsPostingComment(false);
     }

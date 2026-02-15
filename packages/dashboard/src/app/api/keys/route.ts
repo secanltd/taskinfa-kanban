@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, query } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
 import { generateApiKey } from '@/lib/auth/jwt';
+import { createErrorResponse } from '@/lib/utils/errors';
 import { checkRateLimit, createRateLimitResponse, sessionRateLimitKey, RATE_LIMITS } from '@/lib/middleware/rateLimit';
 import { applyRateLimitHeaders } from '@/lib/middleware/apiRateLimit';
 import type { CreateApiKeyRequest, CreateApiKeyResponse, ListApiKeysResponse, ApiKey } from '@taskinfa/shared';
@@ -48,11 +49,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
-    console.error('List API keys error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'list_api_keys' });
   }
 }
 
@@ -140,10 +137,6 @@ export async function POST(request: NextRequest) {
     return applyRateLimitHeaders(nextResponse, rl);
 
   } catch (error) {
-    console.error('Create API key error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'create_api_key' });
   }
 }
