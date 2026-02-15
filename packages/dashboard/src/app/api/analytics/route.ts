@@ -134,34 +134,34 @@ export async function GET(request: NextRequest) {
       [workspaceId]
     );
 
-    // 4. Burndown: tasks remaining (not done) over time
-    // We approximate by counting completed tasks cumulatively
-    const totalTasks = await query<{ total: number }>(
+    // 4. Burndown: tasks remaining (not done) at each date
+    // For each date in the window, count tasks that existed (created <= date)
+    // minus tasks completed by that date
+    const burndownData = await query<{ date: string; remaining: number }>(
       db,
-      `SELECT COUNT(*) as total FROM tasks WHERE workspace_id = ?`,
-      [workspaceId]
-    );
-
-    const completedOverTime = await query<{ date: string; cumulative: number }>(
-      db,
-      `SELECT date, SUM(count) OVER (ORDER BY date) as cumulative
-       FROM (
-         SELECT strftime('%Y-%m-%d', completed_at) as date, COUNT(*) as count
-         FROM tasks
-         WHERE workspace_id = ?
-           AND status = 'done'
-           AND completed_at IS NOT NULL
-           AND completed_at >= datetime('now', '-90 days')
-         GROUP BY date
+      `WITH RECURSIVE dates(date) AS (
+         SELECT date(datetime('now', '-90 days'))
+         UNION ALL
+         SELECT date(date, '+1 day') FROM dates WHERE date < date('now')
        )
-       ORDER BY date ASC`,
-      [workspaceId]
+       SELECT d.date,
+         (SELECT COUNT(*) FROM tasks
+          WHERE workspace_id = ?
+            AND date(created_at) <= d.date) -
+         (SELECT COUNT(*) FROM tasks
+          WHERE workspace_id = ?
+            AND status = 'done'
+            AND completed_at IS NOT NULL
+            AND date(completed_at) <= d.date) as remaining
+       FROM dates d
+       WHERE strftime('%w', d.date) = '1' OR d.date = date('now')
+       ORDER BY d.date ASC`,
+      [workspaceId, workspaceId]
     );
 
-    const total = totalTasks[0]?.total || 0;
-    const burndown: BurndownRow[] = completedOverTime.map(row => ({
+    const burndown: BurndownRow[] = burndownData.map(row => ({
       date: row.date,
-      remaining: total - row.cumulative,
+      remaining: row.remaining,
     }));
 
     // 5. Session analytics
