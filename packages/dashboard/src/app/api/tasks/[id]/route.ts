@@ -3,8 +3,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
-import { getDb, queryOne, execute } from '@/lib/db/client';
-import type { Task, UpdateTaskStatusRequest } from '@taskinfa/shared';
+import { getDb, queryOne, query, execute } from '@/lib/db/client';
+import type { Task, UpdateTaskStatusRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import { getValidStatuses } from '@taskinfa/shared';
 import {
   safeJsonParseArray,
   createErrorResponse,
@@ -14,6 +15,21 @@ import {
   validateEnum,
   validateInteger,
 } from '@/lib/utils';
+
+async function getEnabledFeatures(db: ReturnType<typeof getDb>, workspaceId: string): Promise<Record<FeatureKey, boolean>> {
+  const rows = await query<FeatureToggle>(
+    db,
+    'SELECT * FROM feature_toggles WHERE workspace_id = ?',
+    [workspaceId]
+  );
+  const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false };
+  for (const row of rows) {
+    if (row.feature_key in features) {
+      features[row.feature_key as FeatureKey] = Boolean(row.enabled);
+    }
+  }
+  return features;
+}
 
 
 // GET /api/tasks/[id] - Get task by ID
@@ -94,9 +110,13 @@ export async function PATCH(
       branch_name,
     } = body;
 
-    // Validate status if provided
+    // Validate status dynamically based on enabled feature toggles
+    const db = getDb();
+    const enabledFeatures = await getEnabledFeatures(db, auth.workspaceId);
+    const validStatuses = getValidStatuses(enabledFeatures);
+
     const validatedStatus = status ? validateEnum(status,
-      ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
+      validStatuses,
       { fieldName: 'status', required: false }
     ) : undefined;
 
@@ -105,8 +125,6 @@ export async function PATCH(
       ['low', 'medium', 'high', 'urgent'] as const,
       { fieldName: 'priority', required: false }
     ) : undefined;
-
-    const db = getDb();
 
     // Build dynamic UPDATE query
     const updates: string[] = ['updated_at = datetime("now")'];

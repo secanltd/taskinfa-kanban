@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import type { Task, TaskList, TaskStatus, SessionWithDetails } from '@taskinfa/shared';
+import { useState, useCallback, useEffect } from 'react';
+import type { Task, TaskList, TaskStatus, SessionWithDetails, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import { getStatusColumns } from '@taskinfa/shared';
 import { useTaskStream } from '@/hooks/useTaskStream';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
@@ -13,14 +14,6 @@ interface KanbanBoardProps {
   taskLists: TaskList[];
 }
 
-const statusColumns: { status: TaskStatus; label: string; icon: string }[] = [
-  { status: 'backlog', label: 'Backlog', icon: '📋' },
-  { status: 'todo', label: 'To Do', icon: '📝' },
-  { status: 'in_progress', label: 'In Progress', icon: '⚡' },
-  { status: 'review', label: 'Review', icon: '👀' },
-  { status: 'done', label: 'Done', icon: '✅' },
-];
-
 export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -29,6 +22,34 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   const [isSessionsPanelOpen, setIsSessionsPanelOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  // Feature toggles for dynamic columns
+  const [enabledFeatures, setEnabledFeatures] = useState<Record<FeatureKey, boolean>>({
+    refinement: false,
+    ai_review: false,
+  });
+
+  const statusColumns = getStatusColumns(enabledFeatures);
+
+  useEffect(() => {
+    async function fetchToggles() {
+      try {
+        const res = await fetch('/api/feature-toggles');
+        if (!res.ok) return;
+        const data = await res.json() as { toggles: FeatureToggle[] };
+        const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false };
+        for (const toggle of data.toggles) {
+          if (toggle.feature_key in features) {
+            features[toggle.feature_key as FeatureKey] = toggle.enabled;
+          }
+        }
+        setEnabledFeatures(features);
+      } catch {
+        // Keep defaults if fetch fails
+      }
+    }
+    fetchToggles();
+  }, []);
 
   // Handle real-time task updates from SSE
   const handleTasksUpdated = useCallback((updatedTasks: Task[]) => {
@@ -285,6 +306,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
           onUpdate={handleTaskUpdate}
           onDelete={handleTaskDelete}
           editMode={editingTask !== null}
+          statusColumns={statusColumns}
         />
       )}
 
