@@ -126,27 +126,29 @@ export default async function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-[1800px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
+      <main className="py-4 sm:py-6">
         {taskLists.length === 0 ? (
-          <div className="bg-terminal-amber/10 border border-terminal-amber/20 rounded-lg p-6">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-terminal-amber/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">⚠️</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-terminal-text mb-2">
-                  No Projects Found
-                </h3>
-                <p className="text-terminal-muted mb-4">
-                  You need to create at least one project before you can create tasks.
-                  Projects organize your tasks and are used by worker containers to know which tasks to execute.
-                </p>
-                <a
-                  href="/projects"
-                  className="btn-primary inline-block"
-                >
-                  Create Your First Project
-                </a>
+          <div className="max-w-[1800px] mx-auto px-3 sm:px-6">
+            <div className="bg-terminal-amber/10 border border-terminal-amber/20 rounded-lg p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-terminal-amber/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl">⚠️</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-terminal-text mb-2">
+                    No Projects Found
+                  </h3>
+                  <p className="text-terminal-muted mb-4">
+                    You need to create at least one project before you can create tasks.
+                    Projects organize your tasks and are used by worker containers to know which tasks to execute.
+                  </p>
+                  <a
+                    href="/projects"
+                    className="btn-primary inline-block"
+                  >
+                    Create Your First Project
+                  </a>
+                </div>
               </div>
             </div>
           </div>
