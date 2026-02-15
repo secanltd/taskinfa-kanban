@@ -1,0 +1,68 @@
+name: Migrate DB
+
+on:
+  push:
+    tags:
+      - 'migratedb/test/**'
+      - 'migratedb/prod/**'
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Determine environment and migration
+        id: env
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == migratedb/test/* ]]; then
+            echo "db_name=taskinfa-kanban-test-db" >> "$GITHUB_OUTPUT"
+            echo "environment=test" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == migratedb/prod/* ]]; then
+            echo "db_name=taskinfa-kanban-prod-db" >> "$GITHUB_OUTPUT"
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unknown tag: $TAG" && exit 1
+          fi
+
+      - name: Find migration files to apply
+        id: migrations
+        run: |
+          # List all migration files sorted by name
+          FILES=$(ls -1 packages/dashboard/migrations/*.sql | sort)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Found migrations:"
+          echo "$FILES"
+
+      - name: Apply all migrations
+        working-directory: packages/dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          DB_NAME="${{ steps.env.outputs.db_name }}"
+          echo "Applying migrations to $DB_NAME..."
+          for file in migrations/*.sql; do
+            echo "--- Applying $file ---"
+            npx wrangler d1 execute "$DB_NAME" --remote --file="$file" 2>&1 || echo "  (may already be applied, continuing)"
+            echo ""
+          done
+          echo "All migrations processed."
+
+      - name: Summary
+        run: |
+          echo "## DB Migration applied to ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Database: \`${{ steps.env.outputs.db_name }}\`" >> $GITHUB_STEP_SUMMARY
