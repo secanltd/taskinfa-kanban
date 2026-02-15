@@ -60,6 +60,10 @@ const GH_TOKEN = process.env.GH_TOKEN || '';
 const LOG_DIR = TASKINFA_HOME ? join(TASKINFA_HOME, 'logs') : join(WORKSPACE_ROOT, '.memory');
 const LOG_FILE = join(LOG_DIR, 'orchestrator.log');
 
+// Clean env for child Claude processes — remove CLAUDECODE to prevent
+// "cannot launch inside another Claude Code session" errors
+const { CLAUDECODE: _dropClaude, ...CLEAN_ENV } = process.env;
+
 // Track active Claude processes
 const activeSessions = new Map<string, { process: ChildProcess; sessionId: string; taskId: string; startedAt: number }>();
 
@@ -620,7 +624,7 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
-      ...process.env,
+      ...CLEAN_ENV,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -999,7 +1003,7 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
-      ...process.env,
+      ...CLEAN_ENV,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1142,7 +1146,7 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
-      ...process.env,
+      ...CLEAN_ENV,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1341,7 +1345,7 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
-      ...process.env,
+      ...CLEAN_ENV,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1621,7 +1625,7 @@ async function startMessageSession(projectId: string, task: Task): Promise<void>
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
-      ...process.env,
+      ...CLEAN_ENV,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1796,13 +1800,26 @@ async function pollCycle() {
         break;
       }
 
-      const task = sortByPriority(tasks)[0];
-      try {
-        await startClaudeSession(projectId, task, { aiReviewEnabled });
-        started++;
-        activeProjectIds.add(projectId);
-      } catch (e) {
-        log('ERROR', 'Failed to start session', { projectId, taskId: task.id, error: String(e) });
+      // Try tasks in priority order — skip ones that hit retry limit
+      const sorted = sortByPriority(tasks);
+      let sessionStarted = false;
+      for (const task of sorted) {
+        if (task.error_count >= MAX_RETRIES) {
+          log('INFO', 'Skipping task (retry limit), trying next', { taskId: task.id, errorCount: task.error_count });
+          continue;
+        }
+        try {
+          await startClaudeSession(projectId, task, { aiReviewEnabled });
+          started++;
+          activeProjectIds.add(projectId);
+          sessionStarted = true;
+          break;
+        } catch (e) {
+          log('ERROR', 'Failed to start session', { projectId, taskId: task.id, error: String(e) });
+        }
+      }
+      if (!sessionStarted && sorted.every(t => t.error_count >= MAX_RETRIES)) {
+        log('WARN', 'All tasks in project exceeded retry limit', { projectId, taskCount: sorted.length });
       }
     }
 
