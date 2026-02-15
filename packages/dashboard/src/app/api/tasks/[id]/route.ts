@@ -5,7 +5,7 @@ import { NextRequest } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, queryOne, query, execute } from '@/lib/db/client';
 import { rateLimitApi, jsonWithRateLimit } from '@/lib/middleware/apiRateLimit';
-import type { Task, UpdateTaskStatusRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import type { Task, TaskDependency, UpdateTaskStatusRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
 import { getValidStatuses } from '@taskinfa/shared';
 import {
   safeJsonParseArray,
@@ -59,10 +59,50 @@ export async function GET(
       throw notFoundError('Task');
     }
 
+    // Get subtasks
+    const subtasks = await query<Task>(
+      db,
+      'SELECT * FROM tasks WHERE parent_task_id = ? AND workspace_id = ? ORDER BY "order" ASC',
+      [id, auth.workspaceId]
+    );
+
+    const parsedSubtasks = subtasks.map(st => ({
+      ...st,
+      labels: safeJsonParseArray<string>(st.labels as unknown as string, []),
+      files_changed: safeJsonParseArray<string>(st.files_changed as unknown as string, []),
+    }));
+
+    // Get dependencies
+    const dependencies = await query<TaskDependency>(
+      db,
+      'SELECT * FROM task_dependencies WHERE task_id = ? AND workspace_id = ?',
+      [id, auth.workspaceId]
+    );
+
+    // Get blocked-by task details (title + status for display)
+    let is_blocked = false;
+    let blocked_by: { id: string; title: string; status: string }[] = [];
+    if (dependencies.length > 0) {
+      blocked_by = await query<{ id: string; title: string; status: string }>(
+        db,
+        `SELECT t.id, t.title, t.status FROM task_dependencies td
+         JOIN tasks t ON td.depends_on_task_id = t.id
+         WHERE td.task_id = ?`,
+        [id]
+      );
+      is_blocked = blocked_by.some(t => t.status !== 'done');
+    }
+
     const parsedTask = {
       ...task,
       labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
       files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
+      subtask_count: subtasks.length,
+      subtask_done_count: subtasks.filter(st => st.status === 'done').length,
+      subtasks: parsedSubtasks,
+      dependencies,
+      blocked_by,
+      is_blocked,
     };
 
     return jsonWithRateLimit({ task: parsedTask }, rl.result);
@@ -163,6 +203,20 @@ export async function PATCH(
     }
 
     if (validatedStatus) {
+      // Prevent moving blocked tasks to 'todo' or beyond
+      if (validatedStatus === 'todo' || validatedStatus === 'in_progress') {
+        const blockedCheck = await query<{ cnt: number }>(
+          db,
+          `SELECT COUNT(*) as cnt FROM task_dependencies td
+           JOIN tasks t ON td.depends_on_task_id = t.id
+           WHERE td.task_id = ? AND t.status != 'done'`,
+          [id]
+        );
+        if ((blockedCheck[0]?.cnt ?? 0) > 0) {
+          throw validationError('Cannot move task: it has unresolved dependencies');
+        }
+      }
+
       updates.push('status = ?');
       updateParams.push(validatedStatus);
     }
@@ -233,6 +287,25 @@ export async function PATCH(
 
     if (!task) {
       throw notFoundError('Task');
+    }
+
+    // Auto-complete parent when all subtasks are done
+    if (validatedStatus === 'done' && task.parent_task_id) {
+      const siblingCounts = await query<{ total: number; done: number }>(
+        db,
+        `SELECT COUNT(*) as total,
+          SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done
+         FROM tasks WHERE parent_task_id = ?`,
+        [task.parent_task_id]
+      );
+      if (siblingCounts[0] && siblingCounts[0].total === siblingCounts[0].done) {
+        await execute(
+          db,
+          `UPDATE tasks SET status = 'done', completed_at = COALESCE(completed_at, datetime("now")), updated_at = datetime("now")
+           WHERE id = ? AND workspace_id = ?`,
+          [task.parent_task_id, auth.workspaceId]
+        );
+      }
     }
 
     const parsedTask = {

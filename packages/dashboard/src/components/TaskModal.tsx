@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Task, TaskStatus, TaskPriority, StatusColumn } from '@taskinfa/shared';
+import type { Task, TaskStatus, TaskPriority, StatusColumn, TaskDependency } from '@taskinfa/shared';
 import { getStatusColumns } from '@taskinfa/shared';
 import { formatWorkerName } from '@/utils/formatWorkerName';
 import Modal, { ModalHeader, ModalFooter } from './Modal';
+
+interface TaskDetails extends Task {
+  subtasks?: Task[];
+  dependencies?: TaskDependency[];
+  blocked_by?: { id: string; title: string; status: string }[];
+  is_blocked?: boolean;
+}
 
 const DEFAULT_STATUS_COLUMNS = getStatusColumns({ refinement: false, ai_review: false });
 
@@ -39,6 +46,23 @@ export default function TaskModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResettingErrors, setIsResettingErrors] = useState(false);
+  const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
+
+  // Fetch full task details (subtasks, dependencies) when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    async function fetchDetails() {
+      try {
+        const res = await fetch(`/api/tasks/${task.id}`);
+        if (!res.ok) return;
+        const data = await res.json() as { task: TaskDetails };
+        setTaskDetails(data.task);
+      } catch {
+        // Non-critical, continue without details
+      }
+    }
+    fetchDetails();
+  }, [isOpen, task.id]);
 
   // Form state
   const [title, setTitle] = useState(task.title);
@@ -394,6 +418,71 @@ export default function TaskModal({
             <label className="block text-sm font-medium text-terminal-muted mb-2">Completion Notes</label>
             <div className="bg-terminal-green/10 border border-terminal-green/20 rounded-lg p-4">
               <p className="text-terminal-text whitespace-pre-wrap">{task.completion_notes}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Subtasks (read-only) */}
+        {!isEditing && taskDetails?.subtasks && taskDetails.subtasks.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-terminal-muted mb-2">
+              Subtasks ({taskDetails.subtasks.filter(s => s.status === 'done').length}/{taskDetails.subtasks.length} done)
+            </label>
+            <div className="space-y-1.5">
+              {taskDetails.subtasks.map((subtask) => (
+                <div key={subtask.id} className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 h-4 flex-shrink-0 rounded border ${
+                    subtask.status === 'done'
+                      ? 'bg-terminal-green/20 border-terminal-green text-terminal-green'
+                      : 'border-terminal-border'
+                  } flex items-center justify-center`}>
+                    {subtask.status === 'done' && (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className={subtask.status === 'done' ? 'text-terminal-muted line-through' : 'text-terminal-text'}>
+                    {subtask.title}
+                  </span>
+                  <span className="text-xs text-terminal-muted ml-auto">
+                    {statusColumns.find(c => c.status === subtask.status)?.label || subtask.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dependencies (read-only) */}
+        {!isEditing && taskDetails?.blocked_by && taskDetails.blocked_by.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-terminal-muted mb-2">Dependencies</label>
+            <div className="bg-terminal-amber/10 border border-terminal-amber/20 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-terminal-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span className="text-sm font-medium text-terminal-amber">
+                  {taskDetails.is_blocked ? 'Blocked by:' : 'Depends on (resolved):'}
+                </span>
+              </div>
+              <div className="space-y-1 text-sm">
+                {taskDetails.blocked_by.map((dep) => (
+                  <div key={dep.id} className="flex items-center gap-2 text-terminal-muted">
+                    <span className={dep.status === 'done' ? 'text-terminal-green' : ''}>
+                      {dep.status === 'done' ? '✓' : '○'}
+                    </span>
+                    <span className={dep.status === 'done' ? 'line-through' : ''}>
+                      {dep.title}
+                    </span>
+                    <span className="text-xs ml-auto">
+                      {statusColumns.find(c => c.status === dep.status)?.label || dep.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

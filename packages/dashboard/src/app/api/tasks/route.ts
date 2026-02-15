@@ -116,6 +116,8 @@ export async function GET(request: NextRequest) {
       { fieldName: 'order', required: false, defaultValue: 'asc' }
     );
 
+    const parentTaskId = searchParams.get('parent_task_id');
+
     let sql = 'SELECT tasks.* FROM tasks';
     const params: (string | number)[] = [];
 
@@ -167,6 +169,14 @@ export async function GET(request: NextRequest) {
       params.push(created_before);
     }
 
+    // Filter by parent: 'none' = top-level only, a task ID = subtasks of that parent
+    if (parentTaskId === 'none') {
+      sql += ' AND tasks.parent_task_id IS NULL';
+    } else if (parentTaskId) {
+      sql += ' AND tasks.parent_task_id = ?';
+      params.push(parentTaskId);
+    }
+
     // Sort handling — use explicit column map to avoid SQL injection
     const SORT_COLUMNS: Record<string, string> = {
       created_at: 'tasks.created_at',
@@ -191,11 +201,47 @@ export async function GET(request: NextRequest) {
 
     const tasks = await query<Task>(db, sql, params);
 
-    // Parse JSON fields safely
+    // Get subtask counts for parent tasks
+    const taskIds = tasks.map(t => t.id);
+    const subtaskCounts: Record<string, { total: number; done: number }> = {};
+    if (taskIds.length > 0) {
+      const placeholders = taskIds.map(() => '?').join(',');
+      const counts = await query<{ parent_task_id: string; total: number; done: number }>(
+        db,
+        `SELECT parent_task_id, COUNT(*) as total,
+          SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done
+         FROM tasks WHERE parent_task_id IN (${placeholders}) GROUP BY parent_task_id`,
+        taskIds
+      );
+      for (const row of counts) {
+        subtaskCounts[row.parent_task_id] = { total: row.total, done: row.done };
+      }
+    }
+
+    // Get blocked status for tasks (tasks that have unresolved dependencies)
+    const blockedTaskIds = new Set<string>();
+    if (taskIds.length > 0) {
+      const placeholders = taskIds.map(() => '?').join(',');
+      const blockedRows = await query<{ task_id: string }>(
+        db,
+        `SELECT DISTINCT td.task_id FROM task_dependencies td
+         JOIN tasks t ON td.depends_on_task_id = t.id
+         WHERE td.task_id IN (${placeholders}) AND t.status != 'done'`,
+        taskIds
+      );
+      for (const row of blockedRows) {
+        blockedTaskIds.add(row.task_id);
+      }
+    }
+
+    // Parse JSON fields safely and add subtask counts + blocked status
     const parsedTasks = tasks.map((task) => ({
       ...task,
       labels: safeJsonParseArray<string>(task.labels as unknown as string, []),
       files_changed: safeJsonParseArray<string>(task.files_changed as unknown as string, []),
+      subtask_count: subtaskCounts[task.id]?.total ?? 0,
+      subtask_done_count: subtaskCounts[task.id]?.done ?? 0,
+      is_blocked: blockedTaskIds.has(task.id),
     }));
 
     return jsonWithRateLimit({
@@ -222,7 +268,7 @@ export async function POST(request: NextRequest) {
     if ('response' in rl) return rl.response;
 
     const body: CreateTaskRequest = await request.json();
-    const { title, description, priority = 'medium', labels = [], task_list_id } = body;
+    const { title, description, priority = 'medium', labels = [], task_list_id, parent_task_id } = body;
 
     // Validate inputs
     const validatedTitle = validateString(title, {
@@ -271,6 +317,20 @@ export async function POST(request: NextRequest) {
       throw validationError('Task list not found');
     }
 
+    // If parent_task_id is provided, verify parent exists and belongs to workspace
+    let validatedParentTaskId: string | null = null;
+    if (parent_task_id) {
+      const parentTask = await query<Task>(
+        db,
+        'SELECT id, task_list_id FROM tasks WHERE id = ? AND workspace_id = ?',
+        [parent_task_id, auth.workspaceId]
+      );
+      if (parentTask.length === 0) {
+        throw validationError('Parent task not found');
+      }
+      validatedParentTaskId = parent_task_id;
+    }
+
     // Get next order number for this task list and status
     const maxOrderResult = await query<{ max_order: number }>(
       db,
@@ -284,12 +344,13 @@ export async function POST(request: NextRequest) {
 
     await execute(
       db,
-      `INSERT INTO tasks (id, workspace_id, task_list_id, title, description, priority, labels, status, "order")
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, workspace_id, task_list_id, parent_task_id, title, description, priority, labels, status, "order")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         taskId,
         auth.workspaceId,
         validatedTaskListId,
+        validatedParentTaskId,
         validatedTitle,
         validatedDescription || null,
         validatedPriority || 'medium',

@@ -118,12 +118,14 @@ interface Task {
   status: string;
   priority: string;
   task_list_id: string | null;
+  parent_task_id: string | null;
   error_count: number;
   review_rounds: number;
   pr_url: string | null;
   branch_name: string | null;
   labels: string[];
   completion_notes: string | null;
+  is_blocked?: boolean;
 }
 
 interface TaskList {
@@ -220,6 +222,10 @@ async function getProjectTasks(): Promise<Map<string, Task[]>> {
   const grouped = new Map<string, Task[]>();
 
   for (const task of tasks) {
+    // Skip subtasks (handled by parent) and blocked tasks
+    if (task.parent_task_id) continue;
+    if (task.is_blocked) continue;
+
     const projectId = task.task_list_id || 'default';
     if (!grouped.has(projectId)) grouped.set(projectId, []);
     grouped.get(projectId)!.push(task);

@@ -4,8 +4,12 @@ import type { Task } from '@taskinfa/shared';
 import type { WorkerStatus } from '@/hooks/useTaskStream';
 import { formatWorkerName } from '@/utils/formatWorkerName';
 
+interface TaskCardTask extends Task {
+  is_blocked?: boolean;
+}
+
 interface TaskCardProps {
-  task: Task;
+  task: TaskCardTask;
   worker?: WorkerStatus;
   isDragging?: boolean;
   selectionMode?: boolean;
@@ -121,8 +125,18 @@ export default function TaskCard({
         </button>
       )}
 
+      {/* Blocked indicator */}
+      {task.is_blocked && (
+        <div className="absolute top-2 left-2 p-1" title="Blocked by dependencies">
+          <svg className="w-4 h-4 text-terminal-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+      )}
+
       {/* Title */}
-      <h3 className={`font-medium text-terminal-text mb-2 ${selectionMode ? 'pl-6' : 'pr-8'}`}>{task.title}</h3>
+      <h3 className={`font-medium mb-2 ${task.is_blocked ? 'text-terminal-muted pl-6' : 'text-terminal-text'} ${selectionMode ? 'pl-6' : 'pr-8'}`}>{task.title}</h3>
 
       {/* Description */}
       {task.description && (
@@ -151,6 +165,35 @@ export default function TaskCard({
           </span>
         )}
       </div>
+
+      {/* Subtask Progress */}
+      {(task.subtask_count ?? 0) > 0 && (
+        <div className="flex items-center gap-2 text-xs mb-2">
+          <div className="flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5 text-terminal-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className={`font-medium ${
+              task.subtask_done_count === task.subtask_count
+                ? 'text-terminal-green'
+                : 'text-terminal-muted'
+            }`}>
+              {task.subtask_done_count}/{task.subtask_count} done
+            </span>
+          </div>
+          <div className="flex-1 h-1.5 bg-terminal-bg rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                task.subtask_done_count === task.subtask_count
+                  ? 'bg-terminal-green'
+                  : 'bg-terminal-blue'
+              }`}
+              style={{ width: `${((task.subtask_done_count ?? 0) / (task.subtask_count ?? 1)) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Labels */}
       {task.labels && task.labels.length > 0 && (

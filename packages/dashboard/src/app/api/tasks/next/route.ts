@@ -49,6 +49,12 @@ export async function GET(request: NextRequest) {
       WHERE t.workspace_id = ?
         AND t.status = 'todo'
         AND (t.assigned_to IS NULL OR t.assigned_to = '')
+        AND t.parent_task_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM task_dependencies td
+          JOIN tasks dep ON td.depends_on_task_id = dep.id
+          WHERE td.task_id = t.id AND dep.status != 'done'
+        )
       ORDER BY
         CASE t.priority
           WHEN 'urgent' THEN 1
