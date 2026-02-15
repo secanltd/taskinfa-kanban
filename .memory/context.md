@@ -4,6 +4,27 @@
 
 ## Recent Changes
 
+### Improved Error Messages (fix: poor-error-messages)
+- **Updated** `packages/dashboard/src/lib/utils/errors.ts`:
+  - `createErrorResponse` now includes actual error message (instead of generic "Internal server error") for standard Error instances
+  - Added `operation` field to all error responses for easier debugging
+- **Updated** 4 API routes to use `createErrorResponse` instead of raw `console.error` + generic message:
+  - `packages/dashboard/src/app/api/auth/logout/route.ts`
+  - `packages/dashboard/src/app/api/auth/me/route.ts`
+  - `packages/dashboard/src/app/api/keys/route.ts` (GET + POST)
+  - `packages/dashboard/src/app/api/keys/[id]/route.ts` (DELETE + PATCH)
+- **Updated** `packages/dashboard/src/components/TaskModal.tsx`:
+  - Added `getApiErrorMessage()` helper to extract error details from API responses
+  - All 4 error alerts now show the actual API error message instead of generic fallbacks
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx`:
+  - Added `getApiErrorMessage()` helper for API error extraction
+  - All drag-and-drop and bulk action error handlers now parse API error responses
+  - Console.error logs now include the actual error message
+- **Updated** `scripts/orchestrator.ts`:
+  - Added `parseApiError()` helper that extracts structured error info from API JSON responses
+  - `apiGet/apiPost/apiPatch` now log detailed error messages before throwing
+  - `getProjectInfo()` now logs warnings instead of silently swallowing errors
+
 ### Full-Width Kanban Board (fix: kanban-board-width)
 - **Updated** `packages/dashboard/src/app/dashboard/page.tsx`:
   - Removed `max-w-[1800px]` from `<main>` container so kanban board can use full viewport width

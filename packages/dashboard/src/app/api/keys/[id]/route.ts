@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, execute, queryOne } from '@/lib/db/client';
 import { requireAuth } from '@/lib/auth/middleware';
+import { createErrorResponse } from '@/lib/utils/errors';
 import type { UpdateApiKeyRequest, UpdateApiKeyResponse, ApiKey } from '@taskinfa/shared';
 
 
@@ -58,11 +59,7 @@ export async function DELETE(
     );
 
   } catch (error) {
-    console.error('Delete API key error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'delete_api_key' });
   }
 }
 
@@ -151,10 +148,6 @@ export async function PATCH(
     return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
-    console.error('Update API key error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createErrorResponse(error, { operation: 'update_api_key' });
   }
 }

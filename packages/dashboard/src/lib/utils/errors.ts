@@ -71,6 +71,7 @@ export function createErrorResponse(
     const response = {
       error: error.message,
       category: error.category,
+      ...(context?.operation && { operation: context.operation }),
       ...(error.metadata && { details: error.metadata }),
     };
 
@@ -80,19 +81,28 @@ export function createErrorResponse(
     return NextResponse.json(response, { status: error.statusCode });
   }
 
-  // Handle standard Error instances
+  // Handle standard Error instances — include message for debugging
   if (error instanceof Error) {
     logError(error, context);
     return NextResponse.json(
-      { error: 'Internal server error', category: ErrorCategory.INTERNAL },
+      {
+        error: error.message || 'Internal server error',
+        category: ErrorCategory.INTERNAL,
+        ...(context?.operation && { operation: context.operation }),
+      },
       { status: 500 }
     );
   }
 
   // Handle unknown errors
-  logError(new Error(String(error)), context);
+  const unknownMessage = String(error);
+  logError(new Error(unknownMessage), context);
   return NextResponse.json(
-    { error: 'An unexpected error occurred', category: ErrorCategory.INTERNAL },
+    {
+      error: unknownMessage || 'An unexpected error occurred',
+      category: ErrorCategory.INTERNAL,
+      ...(context?.operation && { operation: context.operation }),
+    },
     { status: 500 }
   );
 }

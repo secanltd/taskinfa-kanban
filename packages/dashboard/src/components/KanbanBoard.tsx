@@ -8,6 +8,16 @@ import { useTaskStream } from '@/hooks/useTaskStream';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import SessionsPanel from './SessionsPanel';
+
+/** Extract error message from a failed API response */
+async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { error?: string };
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
 import CreateTaskModal from './CreateTaskModal';
 import BulkActionBar from './BulkActionBar';
 import TaskFilterToolbar from './TaskFilterToolbar';
@@ -255,14 +265,17 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) throw new Error('Failed to update task');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to update task');
+        throw new Error(msg);
+      }
 
       const data = await response.json() as { task: Task };
       setTasks((prev) =>
         prev.map((t) => (t.id === draggedTask.id ? data.task : t))
       );
     } catch (error) {
-      console.error('Error updating task:', error);
+      console.error('Error updating task status:', error instanceof Error ? error.message : error);
       setTasks(previousTasks);
     }
 
@@ -356,7 +369,10 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         body: JSON.stringify({ task_ids: ids, update: { status: targetStatus } }),
       });
 
-      if (!response.ok) throw new Error('Failed to bulk move tasks');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to bulk move tasks');
+        throw new Error(msg);
+      }
 
       const data = await response.json() as { tasks: Task[] };
       setTasks((prev) => {
@@ -364,7 +380,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         return prev.map((t) => updatedMap.get(t.id) || t);
       });
     } catch (error) {
-      console.error('Error bulk moving tasks:', error);
+      console.error('Error bulk moving tasks:', error instanceof Error ? error.message : error);
       setTasks(previousTasks);
     }
 
@@ -396,7 +412,10 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         body: JSON.stringify({ task_ids: ids, update }),
       });
 
-      if (!response.ok) throw new Error('Failed to bulk edit tasks');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to bulk edit tasks');
+        throw new Error(msg);
+      }
 
       const data = await response.json() as { tasks: Task[] };
       setTasks((prev) => {
@@ -404,7 +423,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         return prev.map((t) => updatedMap.get(t.id) || t);
       });
     } catch (error) {
-      console.error('Error bulk editing tasks:', error);
+      console.error('Error bulk editing tasks:', error instanceof Error ? error.message : error);
       setTasks(previousTasks);
     }
 
@@ -426,9 +445,12 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         body: JSON.stringify({ task_ids: ids }),
       });
 
-      if (!response.ok) throw new Error('Failed to bulk delete tasks');
+      if (!response.ok) {
+        const msg = await getApiErrorMessage(response, 'Failed to bulk delete tasks');
+        throw new Error(msg);
+      }
     } catch (error) {
-      console.error('Error bulk deleting tasks:', error);
+      console.error('Error bulk deleting tasks:', error instanceof Error ? error.message : error);
       setTasks(previousTasks);
     }
 
