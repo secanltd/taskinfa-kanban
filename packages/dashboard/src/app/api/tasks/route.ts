@@ -4,7 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequestUnified } from '@/lib/auth/jwt';
 import { getDb, query, execute } from '@/lib/db/client';
-import type { Task, ListTasksRequest, CreateTaskRequest } from '@taskinfa/shared';
+import type { Task, ListTasksRequest, CreateTaskRequest, FeatureKey, FeatureToggle } from '@taskinfa/shared';
+import { getValidStatuses } from '@taskinfa/shared';
 import { nanoid } from 'nanoid';
 import {
   safeJsonParseArray,
@@ -15,6 +16,21 @@ import {
   validateEnum,
   validateString,
 } from '@/lib/utils';
+
+async function getEnabledFeatures(db: ReturnType<typeof getDb>, workspaceId: string): Promise<Record<FeatureKey, boolean>> {
+  const rows = await query<FeatureToggle>(
+    db,
+    'SELECT * FROM feature_toggles WHERE workspace_id = ?',
+    [workspaceId]
+  );
+  const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false };
+  for (const row of rows) {
+    if (row.feature_key in features) {
+      features[row.feature_key as FeatureKey] = Boolean(row.enabled);
+    }
+  }
+  return features;
+}
 
 
 // GET /api/tasks - List tasks
@@ -34,8 +50,12 @@ export async function GET(request: NextRequest) {
       required: false,
     });
 
+    const db = getDb();
+    const enabledFeatures = await getEnabledFeatures(db, auth.workspaceId);
+    const validStatuses = getValidStatuses(enabledFeatures);
+
     const status = validateEnum(searchParams.get('status'),
-      ['backlog', 'todo', 'in_progress', 'review', 'done'] as const,
+      validStatuses as readonly string[] as readonly [string, ...string[]],
       { fieldName: 'status', required: false }
     );
 
@@ -50,8 +70,6 @@ export async function GET(request: NextRequest) {
       max: 100,
       defaultValue: 50,
     });
-
-    const db = getDb();
     let sql = 'SELECT * FROM tasks WHERE workspace_id = ?';
     const params: string[] = [auth.workspaceId];
 
