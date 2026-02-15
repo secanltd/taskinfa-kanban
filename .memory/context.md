@@ -4,6 +4,21 @@
 
 ## Recent Changes
 
+### Fix Comment Type Constraint & Separate Comments from AI Messages (fix: error-while-adding-comment-to-task)
+- **Created** `packages/dashboard/migrations/014_fix_comment_type_constraint.sql`:
+  - Adds `comment` and `human_message` to task_comments CHECK constraint
+  - Safe to run even if migration 013 partially failed (drops leftover temp table first)
+- **Updated** `packages/shared/src/types/index.ts`:
+  - Added `comment` to `CommentType` union type
+- **Updated** `packages/dashboard/src/app/api/tasks/[id]/comments/route.ts`:
+  - Accept `comment` type in validation
+- **Updated** `packages/dashboard/src/app/api/tasks/pending-messages/route.ts`:
+  - Filter by `comment_type = 'human_message'` to prevent regular comments from triggering AI sessions
+- **Updated** `packages/dashboard/src/components/TaskModal.tsx`:
+  - Split single "Post Comment" button into "Comment" (regular) and "Send to AI" (triggers Claude response)
+  - Regular comments use `comment` type, AI messages use `human_message` type
+  - Added styling for `comment` type badge
+
 ### Improved Error Messages (fix: poor-error-messages)
 - **Updated** `packages/dashboard/src/lib/utils/errors.ts`:
   - `createErrorResponse` now includes actual error message (instead of generic "Internal server error") for standard Error instances

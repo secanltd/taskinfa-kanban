@@ -218,6 +218,7 @@ export default function TaskModal({
       case 'progress': return 'bg-terminal-blue/20 text-terminal-blue';
       case 'question': return 'bg-terminal-amber/20 text-terminal-amber';
       case 'human_message': return 'bg-terminal-purple/20 text-terminal-purple';
+      case 'comment': return 'bg-terminal-muted/20 text-terminal-text';
       default: return 'bg-terminal-muted/20 text-terminal-muted';
     }
   };
@@ -236,7 +237,7 @@ export default function TaskModal({
     return date.toLocaleDateString();
   };
 
-  const handlePostComment = async () => {
+  const handlePostComment = async (commentType: 'comment' | 'human_message' = 'comment') => {
     if (!newComment.trim()) return;
     setIsPostingComment(true);
     try {
@@ -247,7 +248,7 @@ export default function TaskModal({
           author: 'user',
           author_type: 'user',
           content: newComment.trim(),
-          comment_type: 'human_message',
+          comment_type: commentType,
         }),
       });
       if (!res.ok) {
@@ -589,17 +590,26 @@ export default function TaskModal({
               placeholder="Write a comment..."
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  handlePostComment();
+                  handlePostComment('comment');
                 }
               }}
             />
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
               <button
-                onClick={handlePostComment}
+                onClick={() => handlePostComment('comment')}
+                disabled={isPostingComment || !newComment.trim()}
+                className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
+                title="Post a comment (does not trigger AI response)"
+              >
+                {isPostingComment ? 'Posting...' : 'Comment'}
+              </button>
+              <button
+                onClick={() => handlePostComment('human_message')}
                 disabled={isPostingComment || !newComment.trim()}
                 className="btn-primary text-sm px-3 py-1.5 disabled:opacity-50"
+                title="Send a message that triggers an AI response"
               >
-                {isPostingComment ? 'Posting...' : 'Post Comment'}
+                {isPostingComment ? 'Sending...' : 'Send to AI'}
               </button>
             </div>
           </div>

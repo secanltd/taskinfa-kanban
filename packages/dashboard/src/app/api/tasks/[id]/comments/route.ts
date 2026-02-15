@@ -104,8 +104,8 @@ export async function POST(
     if (!content || typeof content !== 'string') {
       throw validationError('content is required');
     }
-    if (!comment_type || !['progress', 'question', 'summary', 'error', 'human_message'].includes(comment_type)) {
-      throw validationError('comment_type must be one of: progress, question, summary, error, human_message');
+    if (!comment_type || !['progress', 'question', 'summary', 'error', 'human_message', 'comment'].includes(comment_type)) {
+      throw validationError('comment_type must be one of: progress, question, summary, error, human_message, comment');
     }
 
     const db = getDb();
