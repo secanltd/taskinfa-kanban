@@ -2,7 +2,7 @@
 
 export type TaskStatus = 'backlog' | 'refinement' | 'todo' | 'review_rejected' | 'in_progress' | 'ai_review' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type CommentType = 'progress' | 'question' | 'summary' | 'error' | 'human_message';
+export type CommentType = 'progress' | 'question' | 'summary' | 'error' | 'human_message' | 'comment';
 export type AuthorType = 'bot' | 'user';
 
 export interface Workspace {

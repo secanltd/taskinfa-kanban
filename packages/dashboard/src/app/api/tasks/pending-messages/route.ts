@@ -24,13 +24,15 @@ export async function GET(request: NextRequest) {
 
     const db = getDb();
 
-    // Find tasks where the latest comment is from a user (author_type = 'user')
-    // and there's no newer bot comment — meaning the message is unprocessed
+    // Find tasks where the latest comment is a human_message (not a regular comment)
+    // and there's no newer bot comment — meaning the message is unprocessed.
+    // Regular 'comment' type comments do NOT trigger AI sessions to prevent unwanted loops.
     const tasks = await query<Task>(
       db,
       `SELECT t.* FROM tasks t
        JOIN task_comments c ON c.task_id = t.id
        WHERE c.author_type = 'user'
+       AND c.comment_type = 'human_message'
        AND c.created_at = (
          SELECT MAX(c2.created_at) FROM task_comments c2 WHERE c2.task_id = t.id
        )
