@@ -138,6 +138,7 @@ interface TaskList {
 interface Session {
   id: string;
   project_id: string | null;
+  current_task_id: string | null;
   status: string;
 }
 
@@ -251,11 +252,25 @@ async function getActiveSessions(): Promise<Set<string>> {
       log('ERROR', 'Failed to mark orphan session as error', { error: String(e) });
     }
 
+    // Reset the orphan's task to todo so it can be picked up again
+    if (session.current_task_id) {
+      try {
+        const { task } = await apiGet<{ task: Task }>(`/api/tasks/${session.current_task_id}`);
+        await apiPatch(`/api/tasks/${session.current_task_id}`, {
+          status: 'todo',
+          assigned_to: null,
+          error_count: (task.error_count || 0) + 1,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to reset orphan task', { error: String(e) });
+      }
+    }
+
     try {
       await apiPost('/api/events', {
         event_type: 'session_error',
         session_id: session.id,
-        message: 'Orphan session detected after orchestrator restart. Session marked as error.',
+        message: 'Orphan session detected after orchestrator restart. Session marked as error, task reset to todo.',
       });
     } catch (e) {
       log('ERROR', 'Failed to post orphan session event', { error: String(e) });
