@@ -122,6 +122,7 @@ interface UpdateTaskRequest extends UpdateTaskStatusRequest {
   labels?: string[];
   pr_url?: string;
   branch_name?: string;
+  claude_session_id?: string;
 }
 
 // PATCH /api/tasks/[id] - Update task
@@ -153,6 +154,7 @@ export async function PATCH(
       labels,
       pr_url,
       branch_name,
+      claude_session_id,
     } = body;
 
     // Validate status dynamically based on enabled feature toggles
@@ -271,6 +273,11 @@ export async function PATCH(
     if (branch_name !== undefined) {
       updates.push('branch_name = ?');
       updateParams.push(branch_name || null);
+    }
+
+    if (claude_session_id !== undefined) {
+      updates.push('claude_session_id = ?');
+      updateParams.push(claude_session_id || null);
     }
 
     updateParams.push(id, auth.workspaceId);
