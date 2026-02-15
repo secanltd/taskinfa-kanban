@@ -47,6 +47,13 @@ export async function PATCH(request: NextRequest) {
       throw validationError('task_ids must be a non-empty array');
     }
 
+    // Validate each ID is a non-empty string
+    for (const id of validatedIds) {
+      if (typeof id !== 'string' || id.length === 0 || id.length > 100) {
+        throw validationError('Each task_id must be a non-empty string (max 100 chars)');
+      }
+    }
+
     if (!update || typeof update !== 'object') {
       throw validationError('update payload is required');
     }
@@ -124,7 +131,6 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'bulk_update_tasks',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
@@ -151,18 +157,33 @@ export async function DELETE(request: NextRequest) {
       throw validationError('task_ids must be a non-empty array');
     }
 
+    // Validate each ID is a non-empty string
+    for (const id of validatedIds) {
+      if (typeof id !== 'string' || id.length === 0 || id.length > 100) {
+        throw validationError('Each task_id must be a non-empty string (max 100 chars)');
+      }
+    }
+
     const db = getDb();
     const placeholders = validatedIds.map(() => '?').join(', ');
+
+    // Count matching tasks before delete to return accurate count
+    const countResult = await query<{ count: number }>(
+      db,
+      `SELECT COUNT(*) as count FROM tasks WHERE id IN (${placeholders}) AND workspace_id = ?`,
+      [...validatedIds, auth.workspaceId]
+    );
+    const matchCount = countResult[0]?.count ?? 0;
+
     const sql = `DELETE FROM tasks WHERE id IN (${placeholders}) AND workspace_id = ?`;
     const params = [...validatedIds, auth.workspaceId];
 
     await execute(db, sql, params);
 
-    return NextResponse.json({ deleted: validatedIds.length });
+    return NextResponse.json({ deleted: matchCount });
   } catch (error) {
     return createErrorResponse(error, {
       operation: 'bulk_delete_tasks',
-      workspaceId: (await authenticateRequestUnified(request))?.workspaceId,
     });
   }
 }
