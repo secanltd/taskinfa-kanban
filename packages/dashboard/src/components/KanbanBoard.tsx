@@ -438,107 +438,110 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
 
   return (
     <>
-      {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
-        {/* Left: Connection Status */}
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              connected ? 'bg-terminal-green animate-pulse' : 'bg-terminal-red'
-            }`}
-          />
-          <span className="text-xs sm:text-sm text-terminal-muted">
-            {connected ? 'Live' : 'Offline'}
-          </span>
-          {!connected && (
-            <button
-              onClick={reconnect}
-              className="text-xs sm:text-sm text-terminal-blue hover:text-terminal-text underline touch-manipulation"
-            >
-              Reconnect
-            </button>
-          )}
-        </div>
-
-        {/* Right: Select Mode + Sessions + Create */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Selection Mode Toggle */}
-          <button
-            onClick={toggleSelectionMode}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border transition-colors touch-manipulation min-h-[44px] text-xs sm:text-sm
-              ${selectionMode
-                ? 'bg-terminal-blue/10 border-terminal-blue text-terminal-blue'
-                : 'bg-terminal-surface border-terminal-border text-terminal-muted hover:bg-terminal-surface-hover hover:border-terminal-border-hover'
+      {/* Header & Toolbar - constrained width */}
+      <div className="max-w-[1800px] mx-auto px-3 sm:px-6">
+        {/* Header Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
+          {/* Left: Connection Status */}
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                connected ? 'bg-terminal-green animate-pulse' : 'bg-terminal-red'
               }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
-          </button>
-
-          {/* Sessions Indicator */}
-          <button
-            onClick={() => setIsSessionsPanelOpen(!isSessionsPanelOpen)}
-            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
-                       hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors touch-manipulation min-h-[44px]"
-          >
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sessionStats.active > 0 ? 'bg-terminal-blue animate-pulse' : onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
-            <span className="text-xs sm:text-sm text-terminal-text whitespace-nowrap">
-              {sessionStats.active} <span className="hidden sm:inline">session{sessionStats.active !== 1 ? 's' : ''} active</span><span className="sm:hidden">active</span>
+            />
+            <span className="text-xs sm:text-sm text-terminal-muted">
+              {connected ? 'Live' : 'Offline'}
             </span>
-            {sessionStats.stuck > 0 && (
-              <span className="text-xs sm:text-sm text-terminal-amber">
-                ({sessionStats.stuck})
-              </span>
+            {!connected && (
+              <button
+                onClick={reconnect}
+                className="text-xs sm:text-sm text-terminal-blue hover:text-terminal-text underline touch-manipulation"
+              >
+                Reconnect
+              </button>
             )}
-          </button>
+          </div>
 
-          {/* Create Task Button */}
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="hidden sm:inline">New Task</span>
-          </button>
+          {/* Right: Select Mode + Sessions + Create */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Selection Mode Toggle */}
+            <button
+              onClick={toggleSelectionMode}
+              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border transition-colors touch-manipulation min-h-[44px] text-xs sm:text-sm
+                ${selectionMode
+                  ? 'bg-terminal-blue/10 border-terminal-blue text-terminal-blue'
+                  : 'bg-terminal-surface border-terminal-border text-terminal-muted hover:bg-terminal-surface-hover hover:border-terminal-border-hover'
+                }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
+            </button>
+
+            {/* Sessions Indicator */}
+            <button
+              onClick={() => setIsSessionsPanelOpen(!isSessionsPanelOpen)}
+              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-terminal-surface border border-terminal-border
+                         hover:bg-terminal-surface-hover hover:border-terminal-border-hover transition-colors touch-manipulation min-h-[44px]"
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sessionStats.active > 0 ? 'bg-terminal-blue animate-pulse' : onlineCount > 0 ? 'bg-terminal-green' : 'bg-terminal-muted'}`} />
+              <span className="text-xs sm:text-sm text-terminal-text whitespace-nowrap">
+                {sessionStats.active} <span className="hidden sm:inline">session{sessionStats.active !== 1 ? 's' : ''} active</span><span className="sm:hidden">active</span>
+              </span>
+              {sessionStats.stuck > 0 && (
+                <span className="text-xs sm:text-sm text-terminal-amber">
+                  ({sessionStats.stuck})
+                </span>
+              )}
+            </button>
+
+            {/* Create Task Button */}
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="hidden sm:inline">New Task</span>
+            </button>
+          </div>
         </div>
+
+        {/* Sessions Panel (collapsible) */}
+        {isSessionsPanelOpen && (
+          <div className="mb-6">
+            <SessionsPanel
+              sessions={sessions}
+              connected={connected}
+              stats={sessionStats}
+              onReconnect={reconnect}
+            />
+          </div>
+        )}
+
+        {/* Search/Filter Toolbar */}
+        <TaskFilterToolbar
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          taskLists={taskLists}
+          allLabels={allLabels}
+          savedFilters={savedFilters}
+          onSaveFilter={handleSaveFilter}
+          onDeleteSavedFilter={handleDeleteSavedFilter}
+        />
+
+        {/* Loading indicator for filtered results */}
+        {isFiltering && (
+          <div className="text-center py-2 text-sm text-terminal-muted">
+            Searching...
+          </div>
+        )}
       </div>
 
-      {/* Sessions Panel (collapsible) */}
-      {isSessionsPanelOpen && (
-        <div className="mb-6">
-          <SessionsPanel
-            sessions={sessions}
-            connected={connected}
-            stats={sessionStats}
-            onReconnect={reconnect}
-          />
-        </div>
-      )}
-
-      {/* Search/Filter Toolbar */}
-      <TaskFilterToolbar
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        taskLists={taskLists}
-        allLabels={allLabels}
-        savedFilters={savedFilters}
-        onSaveFilter={handleSaveFilter}
-        onDeleteSavedFilter={handleDeleteSavedFilter}
-      />
-
-      {/* Loading indicator for filtered results */}
-      {isFiltering && (
-        <div className="text-center py-2 text-sm text-terminal-muted">
-          Searching...
-        </div>
-      )}
-
       {/* Kanban Board - Full Width with Horizontal Scroll */}
-      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-thin -mx-3 px-3 sm:mx-0 sm:px-0">
+      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-thin px-3 sm:px-6">
         {statusColumns.map((column) => {
           const columnTasks = getTasksByStatus(column.status);
           const isDragOver = dragOverColumn === column.status;

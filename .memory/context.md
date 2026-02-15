@@ -4,6 +4,16 @@
 
 ## Recent Changes
 
+### Full-Width Kanban Board (fix: kanban-board-width)
+- **Updated** `packages/dashboard/src/app/dashboard/page.tsx`:
+  - Removed `max-w-[1800px]` from `<main>` container so kanban board can use full viewport width
+  - Moved max-width constraint to empty-state wrapper only
+- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx`:
+  - Wrapped header bar, sessions panel, filter toolbar, and loading indicator in `max-w-[1800px] mx-auto px-3 sm:px-6` container
+  - Kanban columns area now sits outside max-width, using `px-3 sm:px-6` for edge padding
+  - Removed negative margins (`-mx-3 sm:mx-0`) from columns container since it's no longer inside a padded max-width wrapper
+  - Columns scroll horizontally on smaller screens via `overflow-x-auto`
+
 ### Feature Toggle Settings UI (feat: feature-toggle-settings-ui)
 - **Created** `packages/dashboard/src/components/settings/FeatureToggleSettings.tsx`:
   - Client component with toggle switches for Refinement and AI Review features
