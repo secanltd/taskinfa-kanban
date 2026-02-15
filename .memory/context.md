@@ -4,6 +4,21 @@
 
 ## Recent Changes
 
+### Feature Toggle System (feat: feature-toggles)
+- **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table:
+  - Fields: `id`, `workspace_id`, `feature_key`, `enabled`, `config` (JSON), `created_at`, `updated_at`
+  - Unique constraint on `(workspace_id, feature_key)`
+  - Indexes on `workspace_id` and `(workspace_id, feature_key)`
+- **Created** `packages/dashboard/src/app/api/feature-toggles/route.ts` — `GET /api/feature-toggles`:
+  - Lists all toggles for workspace, returns defaults for features not yet in DB
+  - Supports both session cookie and API key auth
+- **Created** `packages/dashboard/src/app/api/feature-toggles/[feature_key]/route.ts` — `PATCH /api/feature-toggles/:feature_key`:
+  - Enable/disable a toggle and update config via upsert
+  - Validates feature_key against known keys (refinement, ai_review)
+- **Updated** `packages/shared/src/types/index.ts` — Added feature toggle types:
+  - `FeatureKey`, `FeatureToggle`, `RefinementConfig`, `AiReviewConfig`, `FeatureConfigMap`
+  - `ListFeatureTogglesResponse`, `UpdateFeatureToggleRequest`, `UpdateFeatureToggleResponse`
+  - `DEFAULT_FEATURE_CONFIGS` constant with default configs for each feature
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
 - **Updated** `packages/dashboard/src/app/layout.tsx` - Added separate viewport export for mobile viewport settings
