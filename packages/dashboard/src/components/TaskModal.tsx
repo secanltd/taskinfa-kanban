@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Task, TaskStatus, TaskPriority, StatusColumn, TaskDependency } from '@taskinfa/shared';
+import type { Task, TaskStatus, TaskPriority, StatusColumn, TaskDependency, TaskComment, CommentType } from '@taskinfa/shared';
 import { getStatusColumns } from '@taskinfa/shared';
 import { formatWorkerName } from '@/utils/formatWorkerName';
 import Modal, { ModalHeader, ModalFooter } from './Modal';
@@ -47,6 +47,9 @@ export default function TaskModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResettingErrors, setIsResettingErrors] = useState(false);
   const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   // Fetch full task details (subtasks, dependencies) when modal opens
   useEffect(() => {
@@ -61,7 +64,18 @@ export default function TaskModal({
         // Non-critical, continue without details
       }
     }
+    async function fetchComments() {
+      try {
+        const res = await fetch(`/api/tasks/${task.id}/comments`);
+        if (!res.ok) return;
+        const data = await res.json() as { comments: TaskComment[]; total: number };
+        setComments(data.comments);
+      } catch {
+        // Non-critical
+      }
+    }
     fetchDetails();
+    fetchComments();
   }, [isOpen, task.id]);
 
   // Form state
@@ -176,6 +190,57 @@ export default function TaskModal({
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const getCommentTypeStyles = (type: CommentType) => {
+    switch (type) {
+      case 'summary': return 'bg-terminal-green/20 text-terminal-green';
+      case 'error': return 'bg-terminal-red/20 text-terminal-red';
+      case 'progress': return 'bg-terminal-blue/20 text-terminal-blue';
+      case 'question': return 'bg-terminal-amber/20 text-terminal-amber';
+      case 'human_message': return 'bg-terminal-purple/20 text-terminal-purple';
+      default: return 'bg-terminal-muted/20 text-terminal-muted';
+    }
+  };
+
+  const formatRelativeTime = (dateString: string) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const handlePostComment = async () => {
+    if (!newComment.trim()) return;
+    setIsPostingComment(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author: 'user',
+          author_type: 'user',
+          content: newComment.trim(),
+          comment_type: 'human_message',
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to post comment');
+      const data = await res.json() as { comment: TaskComment };
+      setComments(prev => [data.comment, ...prev]);
+      setNewComment('');
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      alert('Failed to post comment. Please try again.');
+    } finally {
+      setIsPostingComment(false);
+    }
   };
 
   const getPriorityStyles = (p: string) => {
@@ -486,6 +551,74 @@ export default function TaskModal({
             </div>
           </div>
         )}
+
+        {/* Comments */}
+        <div>
+          <label className="block text-sm font-medium text-terminal-muted mb-2">
+            Comments ({comments.length})
+          </label>
+
+          {/* New comment form */}
+          <div className="mb-3">
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              className="input-field w-full min-h-[60px] resize-y mb-2"
+              placeholder="Write a comment..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  handlePostComment();
+                }
+              }}
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={handlePostComment}
+                disabled={isPostingComment || !newComment.trim()}
+                className="btn-primary text-sm px-3 py-1.5 disabled:opacity-50"
+              >
+                {isPostingComment ? 'Posting...' : 'Post Comment'}
+              </button>
+            </div>
+          </div>
+
+          {/* Comments list */}
+          {comments.length === 0 ? (
+            <p className="text-terminal-muted italic text-sm">No comments yet</p>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto scrollbar-thin">
+              {comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className="bg-terminal-bg border border-terminal-border rounded-lg p-3"
+                >
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    {/* Author icon */}
+                    {comment.author_type === 'bot' ? (
+                      <svg className="w-4 h-4 text-terminal-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-terminal-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    )}
+                    <span className="text-sm font-medium text-terminal-text">{comment.author}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${getCommentTypeStyles(comment.comment_type)}`}>
+                      {comment.comment_type.replace('_', ' ')}
+                    </span>
+                    <span className="text-xs text-terminal-muted ml-auto flex-shrink-0">
+                      {formatRelativeTime(comment.created_at)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-terminal-text whitespace-pre-wrap">{comment.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Timestamps */}
         {!isEditing && (
