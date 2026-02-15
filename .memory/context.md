@@ -1,31 +1,46 @@
 # Project Context
 
-## Last Updated: 2026-02-14
+## Last Updated: 2026-02-15
 
 ## Recent Changes
 
-### Task Search, Filtering, and Sorting (feat: task-search-filtering)
-- **Created** `packages/dashboard/migrations/011_task_search_and_saved_filters.sql` — FTS5 virtual table `tasks_fts` for full-text search across title/description/labels, with insert/update/delete triggers to keep index in sync; `saved_filters` table for persisting user filter presets
-- **Updated** `packages/dashboard/src/app/api/tasks/route.ts` — Extended GET endpoint with `q` (FTS5 search), `label`, `assignee`, `created_after`, `created_before`, `sort` (created_at/updated_at/priority/title/order), `order` (asc/desc) query parameters
-- **Created** `packages/dashboard/src/app/api/saved-filters/route.ts` — GET (list) and POST (create) endpoints for saved filters
-- **Created** `packages/dashboard/src/app/api/saved-filters/[id]/route.ts` — DELETE endpoint for saved filters
-- **Created** `packages/dashboard/src/components/TaskFilterToolbar.tsx` — Search bar with debounced input, filter panel dropdown (status, priority, project, label, date range), sort controls, active filter badges, saved filter management
-- **Updated** `packages/dashboard/src/components/KanbanBoard.tsx` — Integrated TaskFilterToolbar, added client-side filtered task fetching via API, URL-based filter persistence via `useSearchParams`/`useRouter`, saved filters CRUD
-- **Updated** `packages/dashboard/src/app/dashboard/page.tsx` — Added Suspense wrapper for KanbanBoard (required by useSearchParams)
-- **Updated** `packages/shared/src/types/index.ts` — Added `TaskFilters`, `TaskSortField`, `SortOrder`, `SavedFilter` types; extended `ListTasksRequest` with new filter/sort fields
-- **Migration required**: `npm run db:migrate:test -- --file=./migrations/011_task_search_and_saved_filters.sql`
+### Stuck Session Detection & Auto-Recovery (feat: stuck-session-detection)
+- **Updated** `scripts/orchestrator.ts`:
+  - Extended `activeSessions` map value type to include `startedAt: number` timestamp
+  - Added `SESSION_TIMEOUT_MS` config (env var, default 45 minutes)
+  - Added `isProcessAlive()` helper using POSIX `kill(pid, 0)` pattern
+  - Added `checkStuckSessions()` function: iterates active sessions, detects timeout or dead processes, kills stuck processes (SIGTERM then SIGKILL after 5s), resets tasks to `todo` with incremented `error_count`, posts error events
+  - Enhanced `getActiveSessions()` with orphan session cleanup: detects API-active sessions with no local process (orchestrator restart scenario), marks them as `error`
+  - Hooked `checkStuckSessions()` into `pollCycle()` as the first step before any task processing
+  - Updated all 4 `activeSessions.set()` call sites with `startedAt: Date.now()`
+  - Added `SESSION_TIMEOUT_MS` to startup log and doc comment
 
-### API Rate Limiting and Abuse Protection (feat: rate-limiting) — PR #44
-- **Created** `packages/dashboard/migrations/010_rate_limit.sql` — D1 table `rate_limit_entries` for sliding window tracking
-- **Rewritten** `packages/dashboard/src/lib/middleware/rateLimit.ts` — D1-based sliding window rate limiter (replaces non-functional in-memory version)
-- **Created** `packages/dashboard/src/lib/middleware/apiRateLimit.ts` — Higher-level helpers: `rateLimitApi()`, `rateLimitAuth()`, `applyRateLimitHeaders()`
-- **Updated** `packages/dashboard/src/lib/auth/jwt.ts` — `authenticateRequestUnified` now returns `keyId`, `authType` in `UnifiedAuthResult` interface
-- **Updated** all API route handlers — Integrated D1-based rate limiting after authentication
-- **Rate limit tiers**: Login 10/min (IP), Signup 5/min (IP), API key creation 10/hr (session), Standard API 100/min (per-key), Orchestrator 1000/min (config ready)
-- **Headers**: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset on all responses; Retry-After on 429
-- **Design**: Fail-open (if rate limit check fails, request proceeds), opportunistic cleanup (~5% of requests)
-- **Migration required**: `npm run db:migrate:test -- --file=./migrations/010_rate_limit.sql`
+### AI Review Feature in Orchestrator (feat: ai-review)
+- **Updated** `scripts/orchestrator.ts`:
+  - Added `FeatureToggle` interface, `getFeatureToggles()`, `isAiReviewEnabled()`, `getAiReviewConfig()` helpers
+  - Added `getTasksByStatus()` generic task fetcher, `parseRepoSlug()`, `parsePrNumber()` utilities
+  - Added `review_rounds` and `completion_notes` fields to `Task` interface, `labels` field
+  - Modified `startClaudeSession()` success handler: moves task to `ai_review` instead of `review` when toggle is ON
+  - Added `buildAiReviewPrompt()`, `buildFixReviewPrompt()`, `startAiReviewSession()`, `startFixReviewSession()`
+  - Updated `pollCycle()` with priority order: review_rejected > ai_review > todo
+  - Added `sortByPriority()` helper to deduplicate priority sorting logic
+  - AI review config: `max_review_rounds` (default 3), `auto_advance_on_approve` (default true)
 
+### Dynamic Kanban Board Columns (feat: dynamic-kanban-columns)
+- **Updated** `packages/shared/src/types/index.ts`:
+  - Expanded `TaskStatus` type with new values: `refinement`, `ai_review`, `review_rejected`
+  - Added `StatusColumn` interface and `getStatusColumns()` utility
+  - Added `getValidStatuses()` utility
+  - Full order: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
+- **Created** `packages/dashboard/migrations/011_dynamic_task_statuses.sql`
+- **Updated** KanbanBoard, TaskModal, and tasks API routes for dynamic statuses
+
+### Feature Toggle System (feat: feature-toggles)
+- **Created** `packages/dashboard/migrations/010_feature_toggles.sql` — New `feature_toggles` table
+- **Created** `GET /api/feature-toggles` and `PATCH /api/feature-toggles/:feature_key` routes
+- **Updated** `packages/shared/src/types/index.ts` — Added feature toggle types:
+  - `FeatureKey`, `FeatureToggle`, `RefinementConfig`, `AiReviewConfig`, `FeatureConfigMap`
+  - `DEFAULT_FEATURE_CONFIGS` constant with default configs for each feature
 ### Responsive Design Improvement (feat: responsive-design)
 - **Created** `packages/dashboard/src/components/MobileNav.tsx` - Hamburger menu component for mobile navigation
 - **Updated** `packages/dashboard/src/app/layout.tsx` - Added separate viewport export for mobile viewport settings
@@ -84,8 +99,6 @@
 - All modals now share consistent backdrop, keyboard handling, scroll lock, and styling
 
 ## Architecture Notes
-- Rate limiting uses D1 sliding window (not in-memory, which doesn't work in stateless Workers)
-- Rate limit keys: `ip:<ip>:<endpoint>` for auth, `apikey:<keyId>` for API, `session:<userId>:<endpoint>` for session-based
 - No external modal library used - pure React + Tailwind CSS
 - Terminal dark theme with CSS custom properties (--terminal-*)
 - Custom CSS utility classes: btn-primary, btn-secondary, btn-danger, input-field, card

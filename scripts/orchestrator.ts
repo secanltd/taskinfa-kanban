@@ -15,6 +15,7 @@
  *   POLL_INTERVAL   — Polling interval in ms (default: 900000 = 15 min)
  *   MAX_CONCURRENT  — Max parallel Claude sessions (default: 3)
  *   MAX_RETRIES     — Max retries per task before marking blocked (default: 3)
+ *   SESSION_TIMEOUT_MS — Session timeout in ms before marking stuck (default: 2700000 = 45 min)
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -51,6 +52,7 @@ const API_KEY = process.env.KANBAN_API_KEY || '';
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '900000', 10); // 15 min
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '3', 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
+const SESSION_TIMEOUT_MS = parseInt(process.env.SESSION_TIMEOUT_MS || String(45 * 60 * 1000), 10); // 45 min default
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/workspace';
 const TASKINFA_HOME = process.env.TASKINFA_HOME || '';
 const PROJECTS_DIR = process.env.PROJECTS_DIR || join(WORKSPACE_ROOT, 'projects');
@@ -59,7 +61,7 @@ const LOG_DIR = TASKINFA_HOME ? join(TASKINFA_HOME, 'logs') : join(WORKSPACE_ROO
 const LOG_FILE = join(LOG_DIR, 'orchestrator.log');
 
 // Track active Claude processes
-const activeSessions = new Map<string, { process: ChildProcess; sessionId: string; taskId: string }>();
+const activeSessions = new Map<string, { process: ChildProcess; sessionId: string; taskId: string; startedAt: number }>();
 
 // ── Logging ─────────────────────────────────────────────────────────
 
@@ -227,7 +229,47 @@ async function getProjectTasks(): Promise<Map<string, Task[]>> {
 
 async function getActiveSessions(): Promise<Set<string>> {
   const { sessions } = await apiGet<{ sessions: Session[] }>('/api/sessions?status=active');
-  return new Set(sessions.map(s => s.project_id).filter(Boolean) as string[]);
+
+  // Orphan cleanup: if API shows active sessions that don't exist locally,
+  // mark them as errors (handles orchestrator crash/restart scenarios)
+  for (const session of sessions) {
+    const projectId = session.project_id;
+    if (!projectId) continue;
+    if (activeSessions.has(projectId)) continue;
+
+    // API says active but we have no local process — this is an orphan
+    log('WARN', 'Cleaning up orphan session (no local process)', {
+      sessionId: session.id, projectId,
+    });
+
+    try {
+      await apiPatch(`/api/sessions/${session.id}`, {
+        status: 'error',
+        summary: 'Orphan session: orchestrator restarted while session was active',
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to mark orphan session as error', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_error',
+        session_id: session.id,
+        message: 'Orphan session detected after orchestrator restart. Session marked as error.',
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to post orphan session event', { error: String(e) });
+    }
+  }
+
+  // Return only sessions that have a local process (orphans have been cleaned up)
+  const activeProjectIds = new Set<string>();
+  for (const session of sessions) {
+    if (session.project_id && activeSessions.has(session.project_id)) {
+      activeProjectIds.add(session.project_id);
+    }
+  }
+  return activeProjectIds;
 }
 
 async function getProjectInfo(projectId: string): Promise<TaskList | null> {
@@ -455,7 +497,7 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
   // but may block if stdin pipe stays open
   claude.stdin?.end();
 
-  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
 
   let stdout = '';
   let stderr = '';
@@ -797,7 +839,7 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
   });
 
   claude.stdin?.end();
-  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
 
   let stdout = '';
   let stderr = '';
@@ -932,7 +974,7 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
   });
 
   claude.stdin?.end();
-  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
 
   let stdout = '';
   let stderr = '';
@@ -1122,7 +1164,7 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
   });
 
   claude.stdin?.end();
-  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
 
   let stderr = '';
 
@@ -1181,6 +1223,81 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
   });
 }
 
+// ── Stuck session detection ─────────────────────────────────────────
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkStuckSessions(): Promise<void> {
+  const now = Date.now();
+
+  for (const [projectId, entry] of activeSessions) {
+    const ageMins = Math.round((now - entry.startedAt) / 60000);
+    const pid = entry.process.pid;
+    const timedOut = (now - entry.startedAt) >= SESSION_TIMEOUT_MS;
+    const dead = pid != null && !isProcessAlive(pid);
+
+    if (!timedOut && !dead) continue;
+
+    const reason = dead ? 'dead process' : 'timeout';
+    log('WARN', 'Killing stuck session', {
+      sessionId: entry.sessionId, taskId: entry.taskId, projectId, reason, ageMinutes: ageMins,
+    });
+
+    // Kill the process (SIGTERM, then SIGKILL after 5s)
+    if (pid != null && !dead) {
+      entry.process.kill('SIGTERM');
+      setTimeout(() => {
+        if (isProcessAlive(pid)) {
+          entry.process.kill('SIGKILL');
+        }
+      }, 5000);
+    }
+
+    activeSessions.delete(projectId);
+
+    // Update session status to error
+    try {
+      await apiPatch(`/api/sessions/${entry.sessionId}`, {
+        status: 'error',
+        summary: `Session killed: ${reason} after ${ageMins} minutes`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update stuck session', { error: String(e) });
+    }
+
+    // Reset task to todo with incremented error_count
+    try {
+      const { task } = await apiGet<{ task: Task }>(`/api/tasks/${entry.taskId}`);
+      await apiPatch(`/api/tasks/${entry.taskId}`, {
+        status: 'todo',
+        assigned_to: null,
+        error_count: (task.error_count || 0) + 1,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to reset stuck task', { error: String(e) });
+    }
+
+    // Post error event
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_error',
+        session_id: entry.sessionId,
+        task_id: entry.taskId,
+        message: `Session killed: ${reason} after ${ageMins} minutes. Task reset to todo.`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to post stuck session event', { error: String(e) });
+    }
+  }
+}
+
 // ── Main loop ───────────────────────────────────────────────────────
 
 function sortByPriority(tasks: Task[]): Task[] {
@@ -1195,6 +1312,9 @@ async function pollCycle() {
   log('INFO', `Poll cycle starting (${activeSessions.size}/${MAX_CONCURRENT} active sessions)`);
 
   try {
+    // Check for stuck or dead sessions before doing anything else
+    await checkStuckSessions();
+
     // Initialize any new projects (clone repos) before processing tasks
     await initializeProjects();
 
@@ -1311,6 +1431,7 @@ async function main() {
     pollInterval: POLL_INTERVAL,
     maxConcurrent: MAX_CONCURRENT,
     maxRetries: MAX_RETRIES,
+    sessionTimeoutMs: SESSION_TIMEOUT_MS,
     projectsDir: PROJECTS_DIR,
   });
 
