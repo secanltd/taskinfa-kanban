@@ -276,6 +276,46 @@ async function getTasksByStatus(status: string): Promise<Map<string, Task[]>> {
   return grouped;
 }
 
+function isRefinementEnabled(toggles: FeatureToggle[]): boolean {
+  const toggle = toggles.find(t => t.feature_key === 'refinement');
+  return toggle?.enabled ?? false;
+}
+
+function getRefinementConfig(toggles: FeatureToggle[]): { auto_advance: boolean } {
+  const toggle = toggles.find(t => t.feature_key === 'refinement');
+  const config = toggle?.config as Record<string, unknown> | undefined;
+  return { auto_advance: (config?.auto_advance as boolean) ?? true };
+}
+
+async function getRefinementTasks(): Promise<Map<string, Task[]>> {
+  const grouped = await getTasksByStatus('refinement');
+  const filtered = new Map<string, Task[]>();
+
+  for (const [projectId, tasks] of grouped) {
+    const eligibleTasks = tasks.filter(task => {
+      // Parse labels (API may return JSON string or array)
+      const labels = Array.isArray(task.labels)
+        ? task.labels
+        : typeof task.labels === 'string'
+          ? (() => { try { return JSON.parse(task.labels as unknown as string); } catch { return []; } })()
+          : [];
+
+      // Skip tasks that already have the 'refined' label
+      if (labels.includes('refined')) {
+        log('INFO', 'Skipping already refined task', { taskId: task.id, title: task.title });
+        return false;
+      }
+      return true;
+    });
+
+    if (eligibleTasks.length > 0) {
+      filtered.set(projectId, eligibleTasks);
+    }
+  }
+
+  return filtered;
+}
+
 function parseRepoSlug(repoUrl: string | null): string | null {
   if (!repoUrl) return null;
   // https://github.com/owner/repo.git → owner/repo
@@ -954,6 +994,193 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
   });
 }
 
+// ── Refinement sessions ──────────────────────────────────────────────
+
+function buildRefinementPrompt(task: Task, project: TaskList | null, config: { auto_advance: boolean }): string {
+  return `You are a task refinement assistant. Your ONLY job is to improve the title and description of a task on the kanban board. You must NOT write any code, create files, or make any changes to the codebase.
+
+## Task to Refine
+
+**ID:** ${task.id}
+**Current Title:** ${task.title}
+**Current Description:**
+${task.description || '(no description)'}
+
+## Your Goal
+
+Analyze this task and produce a refined version with:
+1. A clear, concise, actionable title (imperative mood, e.g. "Add user authentication" not "User authentication")
+2. A well-structured description with:
+   - **Overview**: 1-2 sentences explaining what this task accomplishes and why
+   - **Deliverables**: Specific, checkable items (use markdown checkboxes)
+   - **Technical Notes**: Implementation hints, relevant files, constraints, or dependencies
+   - **Acceptance Criteria**: How to verify the task is done correctly
+
+## How to Update the Task
+
+Use curl to update the task via the API:
+
+\`\`\`bash
+curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "title": "Refined title here",
+    "description": "Refined description here (use \\n for newlines)",
+    "labels": ${JSON.stringify([...(Array.isArray(task.labels) ? task.labels : []), 'refined'])}${config.auto_advance ? ',\n    "status": "todo"' : ''}
+  }'
+\`\`\`
+
+## Rules
+
+- Do NOT create any files or modify any code
+- Do NOT run git commands
+- Do NOT create branches or PRs
+- ONLY use curl to update the task via the API
+- Keep the title under 80 characters
+- Use markdown formatting in the description
+- Preserve any existing technical details from the original description
+
+## Report Completion
+
+After updating the task, report completion:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/events" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"event_type": "session_end", "session_id": "$KANBAN_SESSION_ID", "task_id": "${task.id}", "message": "Task refined: ${task.title.replace(/"/g, '\\"')}"}'
+\`\`\`
+`;
+}
+
+async function startRefinementSession(projectId: string, task: Task, config: { auto_advance: boolean }): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping refinement', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping refinement', { projectId });
+    return;
+  }
+
+  // Check retry limit
+  if (task.error_count >= MAX_RETRIES) {
+    log('WARN', 'Refinement task exceeded retry limit, skipping', { taskId: task.id, errorCount: task.error_count });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: 'todo',
+        completion_notes: `Refinement failed after ${task.error_count} attempts, moved to todo`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to move refinement task to todo', { error: String(e) });
+    }
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const systemPrompt = buildRefinementPrompt(task, project, config);
+
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `Refining: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting refinement session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Starting refinement: ${task.title}`,
+    metadata: { session_type: 'refinement' },
+  });
+
+  // Spawn Claude with restricted permissions — no GH_TOKEN, only API access
+  const claude = spawn('claude', [
+    '-p', systemPrompt,
+    '--dangerously-skip-permissions',
+    '--output-format', 'text',
+  ], {
+    cwd: workDir,
+    env: {
+      ...process.env,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id });
+
+  let stderr = '';
+
+  claude.stdout?.on('data', () => {}); // consume stdout
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'Refinement session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `Refined: ${task.title}`
+          : `Refinement failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update refinement session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `Refined: ${task.title}`
+          : `Refinement failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'refinement' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report refinement session end', { error: String(e) });
+    }
+
+    // On failure, increment error count but leave in refinement status
+    if (!success) {
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, {
+          error_count: task.error_count + 1,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to update task after refinement failure', { error: String(e) });
+      }
+    }
+    // On success, the prompt instructs Claude to update the task status
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn refinement Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
 // ── Main loop ───────────────────────────────────────────────────────
 
 function sortByPriority(tasks: Task[]): Task[] {
@@ -975,6 +1202,7 @@ async function pollCycle() {
     const toggles = await getFeatureToggles();
     const aiReviewEnabled = isAiReviewEnabled(toggles);
     const aiReviewConfig = aiReviewEnabled ? getAiReviewConfig(toggles) : null;
+    const refinementEnabled = isRefinementEnabled(toggles);
 
     const activeProjectIds = await getActiveSessions();
 
@@ -1041,6 +1269,33 @@ async function pollCycle() {
         activeProjectIds.add(projectId);
       } catch (e) {
         log('ERROR', 'Failed to start session', { projectId, taskId: task.id, error: String(e) });
+      }
+    }
+
+    // Priority 4: Process refinement tasks (lowest priority)
+    if (refinementEnabled) {
+      const refinementConfig = getRefinementConfig(toggles);
+      const refinementTasks = await getRefinementTasks();
+
+      for (const [projectId, tasks] of refinementTasks) {
+        if (activeProjectIds.has(projectId)) {
+          log('INFO', 'Project already has active session, skipping refinement', { projectId });
+          continue;
+        }
+
+        if (activeSessions.size >= MAX_CONCURRENT) {
+          log('INFO', 'Concurrency limit reached, waiting for next cycle');
+          break;
+        }
+
+        const task = sortByPriority(tasks)[0];
+        try {
+          await startRefinementSession(projectId, task, refinementConfig);
+          started++;
+          activeProjectIds.add(projectId);
+        } catch (e) {
+          log('ERROR', 'Failed to start refinement session', { projectId, taskId: task.id, error: String(e) });
+        }
       }
     }
 
