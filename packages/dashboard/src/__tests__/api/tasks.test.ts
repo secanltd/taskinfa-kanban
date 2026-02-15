@@ -70,7 +70,10 @@ describe('GET /api/tasks', () => {
         workspace_id: 'ws_1',
       },
     ];
-    vi.mocked(query).mockResolvedValueOnce(mockTasks);
+    // First query call is for feature_toggles, second is for tasks
+    vi.mocked(query)
+      .mockResolvedValueOnce([]) // feature toggles
+      .mockResolvedValueOnce(mockTasks);
 
     const req = createGetRequest();
     const res = await GET(req);
@@ -87,7 +90,9 @@ describe('GET /api/tasks', () => {
       userId: 'user_1',
       workspaceId: 'ws_1',
     });
-    vi.mocked(query).mockResolvedValueOnce([]);
+    vi.mocked(query)
+      .mockResolvedValueOnce([]) // feature toggles
+      .mockResolvedValueOnce([]);
 
     const req = createGetRequest({ status: 'done' });
     const res = await GET(req);
@@ -102,7 +107,9 @@ describe('GET /api/tasks', () => {
       userId: 'user_1',
       workspaceId: 'ws_1',
     });
-    vi.mocked(query).mockResolvedValueOnce([]);
+    vi.mocked(query)
+      .mockResolvedValueOnce([]) // feature toggles
+      .mockResolvedValueOnce([]);
 
     const req = createGetRequest({ priority: 'urgent' });
     const res = await GET(req);
@@ -115,6 +122,7 @@ describe('GET /api/tasks', () => {
       userId: 'user_1',
       workspaceId: 'ws_1',
     });
+    vi.mocked(query).mockResolvedValueOnce([]); // feature toggles
 
     const req = createGetRequest({ status: 'invalid_status' });
     const res = await GET(req);
@@ -127,6 +135,7 @@ describe('GET /api/tasks', () => {
       userId: 'user_1',
       workspaceId: 'ws_1',
     });
+    vi.mocked(query).mockResolvedValueOnce([]); // feature toggles
 
     const req = createGetRequest({ priority: 'invalid_priority' });
     const res = await GET(req);
@@ -139,7 +148,9 @@ describe('GET /api/tasks', () => {
       userId: 'user_1',
       workspaceId: 'ws_1',
     });
-    vi.mocked(query).mockResolvedValueOnce([]);
+    vi.mocked(query)
+      .mockResolvedValueOnce([]) // feature toggles
+      .mockResolvedValueOnce([]);
 
     const req = createGetRequest({ sort: 'priority', order: 'desc' });
     const res = await GET(req);
