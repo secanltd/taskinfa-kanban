@@ -146,6 +146,9 @@ export default async function OverviewPage() {
               <a href="/dashboard" className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors">
                 Board
               </a>
+              <a href="/analytics" className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors">
+                Analytics
+              </a>
               <a href="/projects" className="text-sm text-terminal-muted hover:text-terminal-text px-3 py-1.5 rounded-lg hover:bg-terminal-bg transition-colors">
                 Projects
               </a>
@@ -158,6 +161,7 @@ export default async function OverviewPage() {
               links={[
                 { href: '/overview', label: 'Overview', active: true },
                 { href: '/dashboard', label: 'Board' },
+                { href: '/analytics', label: 'Analytics' },
                 { href: '/projects', label: 'Projects' },
                 { href: '/settings', label: 'Settings' },
               ]}
