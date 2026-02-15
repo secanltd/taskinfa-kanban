@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
 
     // Join FTS table if search query provided
     if (q) {
-      sql += ' INNER JOIN tasks_fts ON tasks.id = tasks_fts.task_id';
+      sql += ' INNER JOIN tasks_fts ON tasks.rowid = tasks_fts.rowid';
       sql += ' WHERE tasks_fts MATCH ?';
       const ftsQuery = q.replace(/['"*()^~:]/g, ' ').trim().split(/\s+/).map(w => `"${w}"*`).join(' ');
       params.push(ftsQuery);
