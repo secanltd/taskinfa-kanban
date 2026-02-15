@@ -15,24 +15,26 @@ CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
 INSERT INTO tasks_fts(task_id, title, description, labels)
   SELECT id, title, COALESCE(description, ''), COALESCE(labels, '[]') FROM tasks;
 
--- Triggers to keep FTS index in sync
+-- Triggers to keep FTS index in sync (content-sync requires 'delete' command)
 
 -- After INSERT
 CREATE TRIGGER tasks_fts_insert AFTER INSERT ON tasks BEGIN
-  INSERT INTO tasks_fts(task_id, title, description, labels)
-    VALUES (NEW.id, NEW.title, COALESCE(NEW.description, ''), COALESCE(NEW.labels, '[]'));
+  INSERT INTO tasks_fts(rowid, task_id, title, description, labels)
+    VALUES (NEW.rowid, NEW.id, NEW.title, COALESCE(NEW.description, ''), COALESCE(NEW.labels, '[]'));
 END;
 
--- After UPDATE
+-- After UPDATE (delete old, insert new)
 CREATE TRIGGER tasks_fts_update AFTER UPDATE ON tasks BEGIN
-  DELETE FROM tasks_fts WHERE task_id = OLD.id;
-  INSERT INTO tasks_fts(task_id, title, description, labels)
-    VALUES (NEW.id, NEW.title, COALESCE(NEW.description, ''), COALESCE(NEW.labels, '[]'));
+  INSERT INTO tasks_fts(tasks_fts, rowid, task_id, title, description, labels)
+    VALUES ('delete', OLD.rowid, OLD.id, OLD.title, COALESCE(OLD.description, ''), COALESCE(OLD.labels, '[]'));
+  INSERT INTO tasks_fts(rowid, task_id, title, description, labels)
+    VALUES (NEW.rowid, NEW.id, NEW.title, COALESCE(NEW.description, ''), COALESCE(NEW.labels, '[]'));
 END;
 
 -- After DELETE
 CREATE TRIGGER tasks_fts_delete AFTER DELETE ON tasks BEGIN
-  DELETE FROM tasks_fts WHERE task_id = OLD.id;
+  INSERT INTO tasks_fts(tasks_fts, rowid, task_id, title, description, labels)
+    VALUES ('delete', OLD.rowid, OLD.id, OLD.title, COALESCE(OLD.description, ''), COALESCE(OLD.labels, '[]'));
 END;
 
 -- Saved filters table

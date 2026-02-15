@@ -29,8 +29,8 @@ export async function DELETE(
 
     await execute(
       db,
-      'DELETE FROM saved_filters WHERE id = ? AND workspace_id = ?',
-      [id, auth.workspaceId]
+      'DELETE FROM saved_filters WHERE id = ? AND workspace_id = ? AND user_id = ?',
+      [id, auth.workspaceId, auth.userId || '']
     );
 
     return NextResponse.json({ success: true });

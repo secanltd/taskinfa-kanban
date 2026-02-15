@@ -147,8 +147,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (label) {
-      sql += ' AND tasks.labels LIKE ?';
-      params.push(`%${label}%`);
+      sql += " AND tasks.labels LIKE ? ESCAPE '\\'";
+      const escapedLabel = label.replace(/[%_\\]/g, '\\$&');
+      params.push(`%${escapedLabel}%`);
     }
 
     if (assignee) {
@@ -166,18 +167,23 @@ export async function GET(request: NextRequest) {
       params.push(created_before);
     }
 
-    // Sort handling
-    const priorityOrder = "CASE tasks.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
+    // Sort handling — use explicit column map to avoid SQL injection
+    const SORT_COLUMNS: Record<string, string> = {
+      created_at: 'tasks.created_at',
+      updated_at: 'tasks.updated_at',
+      title: 'tasks.title',
+      order: 'tasks."order"',
+      priority: "CASE tasks.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END",
+    };
     const sortDir = order === 'desc' ? 'DESC' : 'ASC';
+    const sortColumn = SORT_COLUMNS[sort || 'order'];
 
-    if (sort === 'priority') {
-      sql += ` ORDER BY ${priorityOrder} ${sortDir}, tasks."order" ASC`;
-    } else if (sort === 'order') {
+    if (sort === 'order' || !sort) {
       sql += ` ORDER BY tasks."order" ASC, tasks.created_at ASC`;
-    } else if (sort === 'title') {
-      sql += ` ORDER BY tasks.title ${sortDir}`;
+    } else if (sort === 'priority') {
+      sql += ` ORDER BY ${sortColumn} ${sortDir}, tasks."order" ASC`;
     } else {
-      sql += ` ORDER BY tasks.${sort} ${sortDir}`;
+      sql += ` ORDER BY ${sortColumn} ${sortDir}`;
     }
 
     sql += ' LIMIT ?';
