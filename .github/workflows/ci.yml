@@ -80,6 +80,18 @@ jobs:
       - name: Build shared package
         run: npm run build --workspace=packages/shared
 
+      - name: Build dashboard
+        run: npm run build --workspace=packages/dashboard
+
+      - name: Start application server
+        run: npm run start --workspace=packages/dashboard &
+        env:
+          JWT_SECRET: ci-test-secret-key-for-testing-only-32chars!!
+          PORT: 3000
+
+      - name: Wait for server to be ready
+        run: npx wait-on http://localhost:3000 --timeout 30000
+
       - name: Run E2E tests
         run: npx playwright test
         env:
