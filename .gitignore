@@ -41,3 +41,6 @@ coverage/
 # Worker workspaces and logs
 workspace-*/
 logs/
+
+# dev.sh logs
+.dev-*.log

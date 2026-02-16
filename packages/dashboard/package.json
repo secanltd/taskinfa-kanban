@@ -14,9 +14,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local",
-    "db:migrate:test": "wrangler d1 execute taskinfa-kanban-test-db --remote",
-    "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-prod-db --remote"
+    "db:migrate": "wrangler d1 migrations apply taskinfa-kanban-db --local",
+    "db:migrate:test": "wrangler d1 migrations apply taskinfa-kanban-test-db --remote",
+    "db:migrate:prod": "wrangler d1 migrations apply taskinfa-kanban-prod-db --remote",
+    "db:migrations:list": "wrangler d1 migrations list taskinfa-kanban-db --local",
+    "db:migrations:list:test": "wrangler d1 migrations list taskinfa-kanban-test-db --remote",
+    "db:migrations:list:prod": "wrangler d1 migrations list taskinfa-kanban-prod-db --remote",
+    "db:migrations:create": "wrangler d1 migrations create taskinfa-kanban-db"
   },
   "dependencies": {
     "@taskinfa/shared": "*",

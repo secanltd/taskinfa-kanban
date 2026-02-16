@@ -235,6 +235,28 @@ See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for the full reference.
 
 ## Development
 
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/secanltd/taskinfa-kanban.git
+cd taskinfa-kanban
+
+# One-command setup (handles dependencies, ports, config)
+./dev.sh
+```
+
+The `dev.sh` script automatically:
+- ✅ Checks prerequisites (Node.js 18+, npm)
+- ✅ Installs dependencies if needed
+- ✅ Creates `.dev.vars` with safe defaults
+- ✅ Handles port conflicts intelligently
+- ✅ Starts Next.js dev server with health checks
+
+**See [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) for complete setup guide.**
+
+### Manual Start (Alternative)
+
 ```bash
 # Start dashboard in dev mode
 npm run dashboard:dev
@@ -270,12 +292,30 @@ git tag orchestrator/v1.0.1 && git push origin orchestrator/v1.0.1
 
 ### Database Migrations
 
-```bash
-cd packages/dashboard
+**Use tag-based workflow for test/production:**
 
-# Apply to remote database
-CLOUDFLARE_API_TOKEN=... npx wrangler d1 execute <db-name> --remote --file=./migrations/<file>.sql
+```bash
+# 1. Create migration
+cd packages/dashboard
+npm run db:migrations:create -- add_new_feature
+
+# 2. Edit the generated migration file
+# 3. Test locally
+npm run db:migrate
+
+# 4. Commit and push
+git add migrations/
+git commit -m "feat: add new feature migration"
+git push origin main
+
+# 5. Deploy to test
+git tag migratedb/test/v2.3.0 && git push origin migratedb/test/v2.3.0
+
+# 6. After testing, deploy to production
+git tag migratedb/prod/v2.3.0 && git push origin migratedb/prod/v2.3.0
 ```
+
+**See [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md#database-management) for detailed migration guide.**
 
 ## Telegram Bot
 
