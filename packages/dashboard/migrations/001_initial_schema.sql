@@ -29,10 +29,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   files_changed TEXT NOT NULL DEFAULT '[]', -- JSON array
   completion_notes TEXT,
 
-  -- PR integration
-  pr_url TEXT,
-  branch_name TEXT,
-
   -- Time tracking
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
