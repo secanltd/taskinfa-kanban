@@ -1,4 +1,4 @@
-name: Migrate DB
+name: Migrate Database
 
 on:
   push:
@@ -9,7 +9,9 @@ on:
 jobs:
   migrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      TURBO_DANGEROUSLY_DISABLE_PACKAGE_MANAGER_CHECK: 1
 
     steps:
       - uses: actions/checkout@v4
@@ -21,48 +23,57 @@ jobs:
 
       - run: npm ci
 
-      - name: Determine environment and migration
+      - name: Determine environment and database
         id: env
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           if [[ "$TAG" == migratedb/test/* ]]; then
             echo "db_name=taskinfa-kanban-test-db" >> "$GITHUB_OUTPUT"
             echo "environment=test" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--remote" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == migratedb/prod/* ]]; then
             echo "db_name=taskinfa-kanban-prod-db" >> "$GITHUB_OUTPUT"
             echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--remote" >> "$GITHUB_OUTPUT"
           else
             echo "Unknown tag: $TAG" && exit 1
           fi
+          echo "version=${TAG##*/}" >> "$GITHUB_OUTPUT"
 
-      - name: Find migration files to apply
-        id: migrations
-        run: |
-          # List all migration files sorted by name
-          FILES=$(ls -1 packages/dashboard/migrations/*.sql | sort)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$FILES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-          echo "Found migrations:"
-          echo "$FILES"
-
-      - name: Apply all migrations
+      - name: List pending migrations
         working-directory: packages/dashboard
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          DB_NAME="${{ steps.env.outputs.db_name }}"
-          echo "Applying migrations to $DB_NAME..."
-          for file in migrations/*.sql; do
-            echo "--- Applying $file ---"
-            npx wrangler d1 execute "$DB_NAME" --remote --file="$file" 2>&1 || echo "  (may already be applied, continuing)"
-            echo ""
-          done
-          echo "All migrations processed."
+          echo "Checking migrations for ${{ steps.env.outputs.db_name }}..."
+          npx wrangler d1 migrations list ${{ steps.env.outputs.db_name }} ${{ steps.env.outputs.env_flag }} || echo "No migrations applied yet"
 
-      - name: Summary
+      - name: Apply migrations
+        working-directory: packages/dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          echo "## DB Migration applied to ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "Applying migrations to ${{ steps.env.outputs.db_name }}..."
+          npx wrangler d1 migrations apply ${{ steps.env.outputs.db_name }} ${{ steps.env.outputs.env_flag }}
+
+      - name: Verify applied migrations
+        working-directory: packages/dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "Applied migrations:"
+          npx wrangler d1 migrations list ${{ steps.env.outputs.db_name }} ${{ steps.env.outputs.env_flag }}
+
+      - name: Migration Summary
+        run: |
+          echo "## Database Migration Completed ✓" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Database: \`${{ steps.env.outputs.db_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Database:** ${{ steps.env.outputs.db_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.env.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Migrations are tracked in the \`d1_migrations\` table." >> $GITHUB_STEP_SUMMARY
+          echo "Wrangler automatically skips already-applied migrations." >> $GITHUB_STEP_SUMMARY

@@ -371,14 +371,18 @@ export default config;
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:test": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env test",
     "deploy:prod": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env production",
-    "db:migrate": "wrangler d1 execute taskinfa-kanban-db --local",
-    "db:migrate:test": "wrangler d1 execute taskinfa-kanban-test-db --remote",
-    "db:migrate:prod": "wrangler d1 execute taskinfa-kanban-prod-db --remote"
+    "db:migrate": "wrangler d1 migrations apply taskinfa-kanban-db --local",
+    "db:migrate:test": "wrangler d1 migrations apply taskinfa-kanban-test-db --remote",
+    "db:migrate:prod": "wrangler d1 migrations apply taskinfa-kanban-prod-db --remote",
+    "db:migrations:list": "wrangler d1 migrations list taskinfa-kanban-db --local",
+    "db:migrations:list:test": "wrangler d1 migrations list taskinfa-kanban-test-db --remote",
+    "db:migrations:list:prod": "wrangler d1 migrations list taskinfa-kanban-prod-db --remote",
+    "db:migrations:create": "wrangler d1 migrations create taskinfa-kanban-db"
   }
 }
 ```
 
-Usage: `npm run db:migrate:test -- --file=./migrations/006_xxx.sql`
+**⚠️ IMPORTANT:** Use `migrations apply` (tracks migrations in `d1_migrations` table), NOT `execute --file` (doesn't track).
 
 ### Environment Variables
 
@@ -404,19 +408,99 @@ GitHub repository secrets (for CI/CD):
 
 ### Database Migrations
 
-**Local Database:**
+**⚠️ CRITICAL: Always use `migrations apply` to track which migrations have been applied.**
+
+D1 tracks migrations in the `d1_migrations` table. Using `execute --file` bypasses tracking and can lead to duplicate migrations.
+
+#### Creating a New Migration
+
 ```bash
-npm run db:migrate -- --file=./migrations/006_xxx.sql
+cd packages/dashboard
+
+# Create new migration file
+npm run db:migrations:create -- add_task_tags
+
+# This creates: migrations/YYYYMMDDHHMMSS_add_task_tags.sql
 ```
 
-**Test Database:**
+#### Applying Migrations Locally
+
 ```bash
-npm run db:migrate:test -- --file=./migrations/006_xxx.sql
+cd packages/dashboard
+
+# Apply all pending migrations
+npm run db:migrate
+
+# List applied migrations
+npm run db:migrations:list
 ```
 
-**Production Database:**
+#### Applying to Test/Production
+
+**❌ DO NOT run migrations manually in test/production!** Use the CI/CD workflow:
+
 ```bash
-npm run db:migrate:prod -- --file=./migrations/006_xxx.sql
+# 1. Test your migration locally first
+npm run db:migrate
+
+# 2. Commit and push the migration file
+git add packages/dashboard/migrations/
+git commit -m "feat: add task tags migration"
+git push origin main
+
+# 3. Tag for test migration
+git tag migratedb/test/v2.3.0
+git push origin migratedb/test/v2.3.0
+
+# 4. GitHub Actions will automatically apply migrations to test DB
+# Watch: https://github.com/secanltd/taskinfa-kanban/actions
+
+# 5. After testing, tag for production migration
+git tag migratedb/prod/v2.3.0
+git push origin migratedb/prod/v2.3.0
+```
+
+#### Manual Migration (Emergency Only)
+
+If you MUST run migrations manually (not recommended):
+
+```bash
+cd packages/dashboard
+
+# Test database
+npm run db:migrate:test
+
+# Production database (DANGEROUS!)
+npm run db:migrate:prod
+
+# List applied migrations
+npm run db:migrations:list:prod
+```
+
+#### Migration Best Practices
+
+1. **Always create migrations with wrangler** - ensures proper naming
+2. **Test locally first** - run `npm run db:migrate` before pushing
+3. **Use CI/CD for test/prod** - prevents human error
+4. **Never delete migration files** - D1 tracks them
+5. **Document schema changes** - add SQL comments
+6. **One change per migration** - easier to rollback
+
+#### Migration Workflow Example
+
+```sql
+-- Migration: Add task tags feature
+-- Date: 2026-02-17
+-- Author: Your Name
+
+-- Add tags column to tasks table
+ALTER TABLE tasks ADD COLUMN tags TEXT DEFAULT '[]';
+
+-- Create index for tag searches
+CREATE INDEX idx_tasks_tags ON tasks(tags);
+
+-- Add comment explaining the feature
+-- Tags are stored as JSON array: ["bug", "feature", "urgent"]
 ```
 
 ### Deployment Checklist
