@@ -6,6 +6,13 @@
 -- SQLite doesn't support ALTER TABLE ... ALTER CONSTRAINT, so we need to
 -- recreate the table to update the CHECK constraint.
 
+-- Step 0: Guard against partial failures from migrations 012/013.
+-- If those migrations were tracked as applied but their ALTER TABLE commands
+-- did not execute (e.g. D1 partial failure), the columns won't exist.
+-- ADD COLUMN IF NOT EXISTS is a no-op when the column already exists.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claude_session_id TEXT;
+
 -- Step 1: Create new tasks table with expanded status CHECK constraint
 CREATE TABLE tasks_new (
   id TEXT PRIMARY KEY,
