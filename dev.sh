@@ -220,6 +220,22 @@ if [ ! -d "$PROJECT_DIR/node_modules" ]; then
 else
   echo -e "  ${GREEN}✓ Dependencies already installed${NC}"
 fi
+
+# Build shared package if dist/ is missing or stale
+# (dist/ is gitignored so it's absent on fresh clones)
+SHARED_DIST="$PROJECT_DIR/packages/shared/dist/index.js"
+SHARED_SRC="$PROJECT_DIR/packages/shared/src/types/index.ts"
+if [ ! -f "$SHARED_DIST" ] || [ "$SHARED_SRC" -nt "$SHARED_DIST" ]; then
+  echo -e "  ${CYAN}Building @taskinfa/shared...${NC}"
+  cd "$PROJECT_DIR/packages/shared"
+  if ! npm run build > /dev/null 2>&1; then
+    echo -e "${RED}  ✗ Failed to build @taskinfa/shared${NC}"
+    exit 1
+  fi
+  echo -e "  ${GREEN}✓ @taskinfa/shared built${NC}"
+else
+  echo -e "  ${GREEN}✓ @taskinfa/shared already built${NC}"
+fi
 echo ""
 
 # ============================================================================
