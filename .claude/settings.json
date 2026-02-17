@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== CRITICAL CONTEXT (survives compaction) ===\nRepo: secanltd/taskinfa-kanban — NEVER push to main\nDeploy: git tag deploy/test|prod/X.Y.Z && git push origin <tag>\nMigrate: git tag migratedb/test|prod/vX.Y.Z && git push origin <tag>\nOrchestrator release: ./scripts/release-orchestrator.sh\nD1: migrations apply only (not execute --file); --env test/production required\nD1: no ADD COLUMN IF NOT EXISTS; explicit column list in INSERT...SELECT\nSee .claude/rules/ for full details'"
+          }
+        ]
+      }
     ]
   }
 }
