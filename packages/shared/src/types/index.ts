@@ -616,7 +616,7 @@ const FEATURE_COLUMNS: Record<FeatureKey, StatusColumn[]> = {
 
 /**
  * Build the dynamic status columns array based on enabled feature toggles.
- * Full order with both features: Backlog -> Refinement -> To Do -> Review Rejected -> In Progress -> AI Review -> Review -> Done
+ * Full order with both features: Backlog -> Refinement -> To Do -> Review Rejected -> Test Failed -> In Progress -> AI Review -> Testing -> Review -> Done
  */
 export function getStatusColumns(enabledFeatures: Record<FeatureKey, boolean>): StatusColumn[] {
   const columns: StatusColumn[] = [];
@@ -639,14 +639,14 @@ export function getStatusColumns(enabledFeatures: Record<FeatureKey, boolean>): 
       columns.push(FEATURE_COLUMNS.local_testing.find(c => c.status === 'test_failed')!);
     }
 
-    // Insert testing after In Progress (before ai_review)
-    if (base.status === 'in_progress' && enabledFeatures.local_testing) {
-      columns.push(FEATURE_COLUMNS.local_testing.find(c => c.status === 'testing')!);
-    }
-
-    // Insert ai_review after In Progress (or after testing if local_testing enabled)
+    // Insert ai_review after In Progress (before testing)
     if (base.status === 'in_progress' && enabledFeatures.ai_review) {
       columns.push(FEATURE_COLUMNS.ai_review.find(c => c.status === 'ai_review')!);
+    }
+
+    // Insert testing after AI Review (or after In Progress if no ai_review)
+    if (base.status === 'in_progress' && enabledFeatures.local_testing) {
+      columns.push(FEATURE_COLUMNS.local_testing.find(c => c.status === 'testing')!);
     }
   }
 

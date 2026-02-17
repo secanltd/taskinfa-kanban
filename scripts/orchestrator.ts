@@ -420,10 +420,13 @@ function isLocalTestingEnabled(toggles: FeatureToggle[]): boolean {
   return toggle?.enabled ?? false;
 }
 
-function getLocalTestingConfig(toggles: FeatureToggle[]): { auto_advance_on_pass: boolean } {
+function getLocalTestingConfig(toggles: FeatureToggle[]): { auto_advance_on_pass: boolean; auto_merge_on_pass: boolean } {
   const toggle = toggles.find(t => t.feature_key === 'local_testing');
   const config = toggle?.config as Record<string, unknown> | undefined;
-  return { auto_advance_on_pass: (config?.auto_advance_on_pass as boolean) ?? true };
+  return {
+    auto_advance_on_pass: (config?.auto_advance_on_pass as boolean) ?? true,
+    auto_merge_on_pass: (config?.auto_merge_on_pass as boolean) ?? false,
+  };
 }
 
 async function getTasksByStatus(status: string): Promise<Map<string, Task[]>> {
@@ -804,17 +807,17 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     try {
       const outputText = extractTextFromJsonOutput(stdout);
       if (success) {
-        const nextStatus = options?.localTestingEnabled ? 'testing'
-          : options?.aiReviewEnabled ? 'ai_review'
+        const nextStatus = options?.aiReviewEnabled ? 'ai_review'
+          : options?.localTestingEnabled ? 'testing'
           : 'review';
         await apiPatch(`/api/tasks/${task.id}`, {
           status: nextStatus,
           completion_notes: outputText.slice(-1000),
         });
-        if (nextStatus === 'testing') {
-          log('INFO', 'Task moved to testing for local browser tests', { taskId: task.id });
-        } else if (nextStatus === 'ai_review') {
+        if (nextStatus === 'ai_review') {
           log('INFO', 'Task moved to ai_review for automated PR review', { taskId: task.id });
+        } else if (nextStatus === 'testing') {
+          log('INFO', 'Task moved to testing for local browser tests', { taskId: task.id });
         }
       } else {
         await apiPatch(`/api/tasks/${task.id}`, {
@@ -828,8 +831,8 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     }
 
     // Post bot comment with session result
-    const nextStatusLabel = options?.localTestingEnabled ? 'testing'
-      : options?.aiReviewEnabled ? 'ai_review'
+    const nextStatusLabel = options?.aiReviewEnabled ? 'ai_review'
+      : options?.localTestingEnabled ? 'testing'
       : 'review';
     const commentContent = success
       ? `Session completed successfully. Task moved to ${nextStatusLabel}.`
@@ -845,7 +848,7 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
 
 // ── AI Review sessions ──────────────────────────────────────────────
 
-function buildAiReviewPrompt(task: Task, project: TaskList | null, config: { max_review_rounds: number; auto_advance_on_approve: boolean }): string {
+function buildAiReviewPrompt(task: Task, project: TaskList | null, config: { max_review_rounds: number; auto_advance_on_approve: boolean }, localTestingEnabled: boolean): string {
   const repoSlug = parseRepoSlug(project?.repository_url ?? null);
   const prNumber = parsePrNumber(task.pr_url);
   const reviewRounds = task.review_rounds || 0;
@@ -935,7 +938,7 @@ After posting the review, update the task based on your verdict:
 curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
   -H "Authorization: Bearer $KANBAN_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"status": "${config.auto_advance_on_approve ? 'done' : 'review'}", "completion_notes": "AI review passed (round ${reviewRounds + 1})", "review_rounds": ${reviewRounds + 1}}'
+  -d '{"status": "${localTestingEnabled ? 'testing' : config.auto_advance_on_approve ? 'done' : 'review'}", "completion_notes": "AI review passed (round ${reviewRounds + 1})", "review_rounds": ${reviewRounds + 1}}'
 \`\`\`
 
 ### If REQUEST_CHANGES (blocking issues found):
@@ -1036,7 +1039,7 @@ gh api repos/${repoSlug}/pulls/${prNumber}/comments --jq '.[] | "\\(.path):\\(.l
   ].filter(Boolean).join('\n');
 }
 
-async function startAiReviewSession(projectId: string, task: Task, config: { max_review_rounds: number; auto_advance_on_approve: boolean }): Promise<void> {
+async function startAiReviewSession(projectId: string, task: Task, config: { max_review_rounds: number; auto_advance_on_approve: boolean }, localTestingEnabled: boolean): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping AI review', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1078,7 +1081,7 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
 
   const project = await getProjectInfo(projectId);
   const workDir = project?.working_directory || WORKSPACE_ROOT;
-  const systemPrompt = buildAiReviewPrompt(task, project, config);
+  const systemPrompt = buildAiReviewPrompt(task, project, config, localTestingEnabled);
 
   const { session } = await apiPost<{ session: Session }>('/api/sessions', {
     project_id: projectId,
@@ -1334,8 +1337,14 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
 
 // ── Local testing sessions ───────────────────────────────────────────
 
-function buildTestingPrompt(task: Task, project: TaskList | null, config: { auto_advance_on_pass: boolean }, aiReviewEnabled: boolean): string {
-  const nextStatusOnPass = aiReviewEnabled ? 'ai_review' : 'review';
+function buildTestingPrompt(task: Task, project: TaskList | null, config: { auto_advance_on_pass: boolean; auto_merge_on_pass: boolean }): string {
+  const mergeStep = config.auto_merge_on_pass && task.pr_url ? `
+Then merge the pull request:
+
+\`\`\`bash
+gh pr merge ${task.pr_url} --squash --delete-branch
+\`\`\`
+` : '';
 
   return `You are an automated browser testing agent. Your job is to test the feature described in this task using the Playwright MCP tools.
 
@@ -1379,14 +1388,14 @@ curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\
   -H "Content-Type: application/json" \\
   -d '{"author":"orchestrator","author_type":"bot","content":"[TEST PASS] <SUMMARY_OF_WHAT_WAS_TESTED_AND_PASSED>","comment_type":"summary"}'
 \`\`\`
-
-Then move the task to ${nextStatusOnPass}:
+${mergeStep}
+Then move the task to review:
 
 \`\`\`bash
 curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
   -H "Authorization: Bearer $KANBAN_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"status":"${nextStatusOnPass}","completion_notes":"Tests passed: <BRIEF_SUMMARY>"}'
+  -d '{"status":"review","completion_notes":"Tests passed: <BRIEF_SUMMARY>"}'
 \`\`\`
 
 ### If FAIL (feature is broken or incomplete):
@@ -1489,7 +1498,7 @@ curl -s "$KANBAN_API_URL/api/tasks/${task.id}/comments?limit=20" \\
   ].filter(Boolean).join('\n');
 }
 
-async function startTestingSession(projectId: string, task: Task, config: { auto_advance_on_pass: boolean }, aiReviewEnabled: boolean): Promise<void> {
+async function startTestingSession(projectId: string, task: Task, config: { auto_advance_on_pass: boolean; auto_merge_on_pass: boolean }): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping testing session', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1504,7 +1513,7 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
     log('WARN', 'Task has no PR URL, skipping testing session and moving to review', { taskId: task.id });
     try {
       await apiPatch(`/api/tasks/${task.id}`, {
-        status: aiReviewEnabled ? 'ai_review' : 'review',
+        status: 'review',
         completion_notes: 'Skipped local testing: no PR URL',
       });
     } catch (e) {
@@ -1515,7 +1524,7 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
 
   const project = await getProjectInfo(projectId);
   const workDir = project?.working_directory || WORKSPACE_ROOT;
-  const systemPrompt = buildTestingPrompt(task, project, config, aiReviewEnabled);
+  const systemPrompt = buildTestingPrompt(task, project, config);
 
   const { session } = await apiPost<{ session: Session }>('/api/sessions', {
     project_id: projectId,
@@ -1603,7 +1612,7 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
     if (!success) {
       try {
         await apiPatch(`/api/tasks/${task.id}`, {
-          status: aiReviewEnabled ? 'ai_review' : 'review',
+          status: 'review',
           completion_notes: `Testing session crashed (exit ${code}), escalated past testing`,
         });
       } catch (e) {
@@ -1611,7 +1620,7 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
       }
       await postBotComment(
         task.id,
-        `Testing session crashed (exit ${code}). Task moved to ${aiReviewEnabled ? 'ai_review' : 'review'}.`,
+        `Testing session crashed (exit ${code}). Task moved to review.`,
         'error'
       );
     }
@@ -2334,7 +2343,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startAiReviewSession(projectId, task, aiReviewConfig);
+          await startAiReviewSession(projectId, task, aiReviewConfig, localTestingEnabled);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
@@ -2352,7 +2361,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startTestingSession(projectId, task, localTestingConfig, aiReviewEnabled);
+          await startTestingSession(projectId, task, localTestingConfig);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
