@@ -23,7 +23,7 @@ async function getEnabledFeatures(db: ReturnType<typeof getDb>, workspaceId: str
     'SELECT * FROM feature_toggles WHERE workspace_id = ?',
     [workspaceId]
   );
-  const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false };
+  const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false, local_testing: false };
   for (const row of rows) {
     if (row.feature_key in features) {
       features[row.feature_key as FeatureKey] = Boolean(row.enabled);

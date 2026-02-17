@@ -23,7 +23,7 @@ interface TaskDetails extends Task {
   is_blocked?: boolean;
 }
 
-const DEFAULT_STATUS_COLUMNS = getStatusColumns({ refinement: false, ai_review: false });
+const DEFAULT_STATUS_COLUMNS = getStatusColumns({ refinement: false, ai_review: false, local_testing: false });
 
 interface TaskModalProps {
   task: Task;

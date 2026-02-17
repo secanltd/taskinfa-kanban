@@ -1,6 +1,6 @@
 // Core domain types
 
-export type TaskStatus = 'backlog' | 'refinement' | 'todo' | 'review_rejected' | 'in_progress' | 'ai_review' | 'review' | 'done';
+export type TaskStatus = 'backlog' | 'refinement' | 'todo' | 'review_rejected' | 'test_failed' | 'in_progress' | 'testing' | 'ai_review' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type CommentType = 'progress' | 'question' | 'summary' | 'error' | 'human_message' | 'comment';
 export type AuthorType = 'bot' | 'user';
@@ -530,7 +530,7 @@ export interface UpdateApiKeyResponse {
 
 // Feature toggle types
 
-export type FeatureKey = 'refinement' | 'ai_review';
+export type FeatureKey = 'refinement' | 'ai_review' | 'local_testing';
 
 export interface RefinementConfig {
   auto_advance: boolean;
@@ -541,9 +541,14 @@ export interface AiReviewConfig {
   max_review_rounds: number;
 }
 
+export interface LocalTestingConfig {
+  auto_advance_on_pass: boolean;
+}
+
 export type FeatureConfigMap = {
   refinement: RefinementConfig;
   ai_review: AiReviewConfig;
+  local_testing: LocalTestingConfig;
 };
 
 export interface FeatureToggle {
@@ -572,6 +577,7 @@ export interface UpdateFeatureToggleResponse {
 export const DEFAULT_FEATURE_CONFIGS: Record<FeatureKey, Record<string, unknown>> = {
   refinement: { auto_advance: true },
   ai_review: { auto_advance_on_approve: true, max_review_rounds: 3 },
+  local_testing: { auto_advance_on_pass: true },
 };
 
 // Column definitions for the kanban board
@@ -601,6 +607,10 @@ const FEATURE_COLUMNS: Record<FeatureKey, StatusColumn[]> = {
     { status: 'ai_review', label: 'AI Review', icon: '🤖', featureKey: 'ai_review' },
     { status: 'review_rejected', label: 'Review Rejected', icon: '🔄', featureKey: 'ai_review' },
   ],
+  local_testing: [
+    { status: 'test_failed', label: 'Test Failed', icon: '❌', featureKey: 'local_testing' },
+    { status: 'testing', label: 'Testing', icon: '🧪', featureKey: 'local_testing' },
+  ],
 };
 
 /**
@@ -623,7 +633,17 @@ export function getStatusColumns(enabledFeatures: Record<FeatureKey, boolean>): 
       columns.push(FEATURE_COLUMNS.ai_review.find(c => c.status === 'review_rejected')!);
     }
 
-    // Insert ai_review after In Progress
+    // Insert test_failed after review_rejected (or after todo if no ai_review)
+    if (base.status === 'todo' && enabledFeatures.local_testing) {
+      columns.push(FEATURE_COLUMNS.local_testing.find(c => c.status === 'test_failed')!);
+    }
+
+    // Insert testing after In Progress (before ai_review)
+    if (base.status === 'in_progress' && enabledFeatures.local_testing) {
+      columns.push(FEATURE_COLUMNS.local_testing.find(c => c.status === 'testing')!);
+    }
+
+    // Insert ai_review after In Progress (or after testing if local_testing enabled)
     if (base.status === 'in_progress' && enabledFeatures.ai_review) {
       columns.push(FEATURE_COLUMNS.ai_review.find(c => c.status === 'ai_review')!);
     }
