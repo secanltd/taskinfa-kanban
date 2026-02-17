@@ -9,17 +9,20 @@
 #   Phase 2  Dependency installation
 #   Phase 3  Port resolution (early-exit if already running)
 #   Phase 4  Local D1 database reset + migrations
-#   Phase 5  Dashboard config (.dev.vars)
+#   Phase 5  Dashboard config + create projects directory
 #   Phase 6  Start Next.js dashboard
 #   Phase 7  Health check (wait for server ready)
-#   Phase 8  Seed DB (dev user + API key via live API)
-#   Phase 9  Write orchestrator .env with live API key + local URL
+#   Phase 8  Seed DB (dev user + API key + test projects via live API)
+#   Phase 9  Write orchestrator .env (API key, PROJECTS_DIR, GH_TOKEN, etc.)
 #   Phase 10 Start orchestrator (optional, polls every 10s locally)
 #   Phase 11 Print full dev summary
 #
 # Usage:
 #   ./dev.sh                   Start dashboard + orchestrator (default)
 #   ./dev.sh --no-orchestrator Start dashboard only
+#
+# Config:
+#   dev-sh-config.json         All non-secret settings (port, projects dir, etc.)
 #
 # Workflow for contributors:
 #   git pull origin main && ./dev.sh
@@ -36,28 +39,6 @@ for arg in "$@"; do
 done
 
 # --------------------------------------------------------------------------
-# Project-level constants
-# --------------------------------------------------------------------------
-PROJECT_NAME="Taskinfa Kanban"
-DEFAULT_PORT=3000
-MIN_NODE_VERSION=18
-
-# Dev user seeded on every fresh start
-DEV_EMAIL="dev@taskinfa.local"
-DEV_PASSWORD="DevPass123!"
-DEV_NAME="Local Dev"
-
-# Orchestrator tuning — 10s poll for local dev (vs 900000ms in production)
-ORCHESTRATOR_POLL_INTERVAL=10000
-
-# Runtime state
-APP_PORT=$DEFAULT_PORT
-DEV_API_KEY=""
-DASHBOARD_PID=""
-ORCHESTRATOR_PID=""
-COOKIE_JAR=$(mktemp /tmp/taskinfa-dev-cookies.XXXXXX)
-
-# --------------------------------------------------------------------------
 # Colors
 # --------------------------------------------------------------------------
 RED='\033[0;31m'
@@ -70,9 +51,56 @@ DIM='\033[2m'
 NC='\033[0m'
 
 # --------------------------------------------------------------------------
-# Get absolute project root
+# Project root (absolute path to repo)
 # --------------------------------------------------------------------------
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_NAME="Taskinfa Kanban"
+MIN_NODE_VERSION=18
+
+# --------------------------------------------------------------------------
+# Read dev-sh-config.json
+# --------------------------------------------------------------------------
+CONFIG_FILE="$PROJECT_DIR/dev-sh-config.json"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo -e "${RED}✗ dev-sh-config.json not found at $CONFIG_FILE${NC}"
+  exit 1
+fi
+
+# Helper: read a value from config via python3; $1 is a python expression on dict d
+cfg() {
+  python3 -c "
+import json, os, sys
+d = json.load(open('$CONFIG_FILE'))
+try:
+    v = $1
+    print(v if v is not None else '')
+except Exception:
+    print('')
+" 2>/dev/null
+}
+
+DEFAULT_PORT=$(cfg "d.get('port', 3000)")
+DEV_EMAIL=$(cfg "d.get('devUser', {}).get('email', 'dev@taskinfa.local')")
+DEV_PASSWORD=$(cfg "d.get('devUser', {}).get('password', 'DevPass123!')")
+DEV_NAME=$(cfg "d.get('devUser', {}).get('name', 'Local Dev')")
+ORCHESTRATOR_POLL_INTERVAL=$(cfg "d.get('orchestrator', {}).get('pollInterval', 10000)")
+MAX_CONCURRENT=$(cfg "d.get('orchestrator', {}).get('maxConcurrent', 3)")
+MAX_RETRIES=$(cfg "d.get('orchestrator', {}).get('maxRetries', 3)")
+
+# Expand ~ to $HOME for the projects directory path
+PROJECTS_DIR_RAW=$(cfg "d.get('orchestrator', {}).get('projectsDir', '~/workspace/taskinfa-dev-projects')")
+PROJECTS_DIR="${PROJECTS_DIR_RAW/\~/$HOME}"
+
+# --------------------------------------------------------------------------
+# Runtime state
+# --------------------------------------------------------------------------
+APP_PORT=$DEFAULT_PORT
+DEV_API_KEY=""
+DASHBOARD_PID=""
+ORCHESTRATOR_PID=""
+SEEDED_PROJECTS=()
+COOKIE_JAR=$(mktemp /tmp/taskinfa-dev-cookies.XXXXXX)
 
 # --------------------------------------------------------------------------
 # Cleanup — runs on Ctrl+C or script exit
@@ -139,7 +167,7 @@ check_npm() {
 
 check_python3() {
   if ! command -v python3 &>/dev/null; then
-    echo -e "${RED}  ✗ python3 not found (needed for API seeding)${NC}"
+    echo -e "${RED}  ✗ python3 not found (needed for config + API seeding)${NC}"
     exit 1
   fi
   echo -e "  ${GREEN}✓ python3 available${NC}"
@@ -162,7 +190,7 @@ check_claude_cli() {
 
 check_gh_cli() {
   if ! command -v gh &>/dev/null; then
-    echo -e "  ${YELLOW}⚠ GitHub CLI not found (optional for PR workflows)${NC}"
+    echo -e "  ${YELLOW}⚠ GitHub CLI not found (optional — needed to clone private repos)${NC}"
   else
     echo -e "  ${GREEN}✓ GitHub CLI installed${NC}"
   fi
@@ -233,7 +261,6 @@ find_available_port() {
 
 if is_port_in_use "$APP_PORT"; then
   if is_same_project "$APP_PORT"; then
-    # Server already running from this project — show quick status and exit
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║   Dev server already running!                    ║${NC}"
@@ -243,7 +270,6 @@ if is_port_in_use "$APP_PORT"; then
     echo ""
     echo -e "${DIM}  To stop: Ctrl+C in the running terminal, or: pkill -f 'next dev'${NC}"
     echo ""
-    # Cancel the EXIT trap so cleanup doesn't kill the already-running server
     trap - EXIT
     exit 0
   else
@@ -266,14 +292,12 @@ echo ""
 
 echo -e "${CYAN}[4/9] Resetting local database...${NC}"
 
-# Wipe local D1 SQLite state for a clean slate on each dev session
 D1_STATE_DIR="$PROJECT_DIR/packages/dashboard/.wrangler/state/v3/d1"
 if [ -d "$D1_STATE_DIR" ]; then
   rm -rf "$D1_STATE_DIR"
   echo -e "  ${YELLOW}Dropped existing local D1 state${NC}"
 fi
 
-# Apply all tracked migrations
 echo -e "  Applying migrations..."
 cd "$PROJECT_DIR/packages/dashboard"
 MIGRATION_OUTPUT=$(npx wrangler d1 migrations apply taskinfa-kanban-db --local 2>&1)
@@ -285,7 +309,6 @@ if [ $MIGRATION_EXIT -ne 0 ]; then
   exit 1
 fi
 
-# Show only the meaningful migration lines
 APPLIED=$(echo "$MIGRATION_OUTPUT" | grep -E "(Applying|Skipped|Applied|migration)" | head -20)
 if [ -n "$APPLIED" ]; then
   echo "$APPLIED" | sed 's/^/    /'
@@ -295,15 +318,15 @@ echo -e "  ${GREEN}✓ Migrations applied${NC}"
 echo ""
 
 # ============================================================================
-# PHASE 5: DASHBOARD CONFIG (.dev.vars + .env.local)
+# PHASE 5: DASHBOARD CONFIG + PROJECTS DIRECTORY
 # ============================================================================
 
-echo -e "${CYAN}[5/9] Configuring dashboard...${NC}"
+echo -e "${CYAN}[5/9] Configuring environment...${NC}"
 
-# Generate a fresh secret on every run (DB is reset anyway so all sessions are invalid)
+# Fresh secret every run (DB is reset so all sessions are invalid anyway)
 JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || echo "local-dev-secret-$(date +%s)-change-in-production")
 
-# .dev.vars — read by @opennextjs/cloudflare to expose Cloudflare bindings/secrets
+# .dev.vars — Cloudflare bindings for @opennextjs/cloudflare
 cat > "$PROJECT_DIR/packages/dashboard/.dev.vars" << EOF
 # Auto-generated by dev.sh — safe for local development only
 # DO NOT commit this file to git
@@ -312,7 +335,7 @@ JWT_SECRET=$JWT_SECRET
 ENVIRONMENT=development
 EOF
 
-# .env.local — read by Next.js process.env (needed for session.ts and other server code)
+# .env.local — Next.js process.env (needed by session.ts, etc.)
 cat > "$PROJECT_DIR/packages/dashboard/.env.local" << EOF
 # Auto-generated by dev.sh — safe for local development only
 # DO NOT commit this file to git
@@ -322,6 +345,10 @@ ENVIRONMENT=development
 EOF
 
 echo -e "  ${GREEN}✓ .dev.vars and .env.local written${NC}"
+
+# Create the local projects directory where the orchestrator will clone repos
+mkdir -p "$PROJECTS_DIR"
+echo -e "  ${GREEN}✓ Projects directory ready${NC} ${DIM}($PROJECTS_DIR)${NC}"
 echo ""
 
 # ============================================================================
@@ -356,7 +383,6 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     break
   fi
   RETRY_COUNT=$((RETRY_COUNT + 1))
-  # Show progress every 5 seconds
   if (( RETRY_COUNT % 5 == 0 )); then
     echo -e "  ${DIM}  Still waiting... (${RETRY_COUNT}s)${NC}"
   fi
@@ -376,8 +402,8 @@ echo ""
 
 echo -e "${CYAN}[8/9] Seeding database...${NC}"
 
-seed_database() {
-  # ── Create dev user via signup ──────────────────────────────────────────
+# ── 8a: Create dev user + API key ───────────────────────────────────────────
+seed_user_and_key() {
   local signup_response
   signup_response=$(curl -s \
     -c "$COOKIE_JAR" \
@@ -397,7 +423,6 @@ seed_database() {
   fi
   echo -e "  ${GREEN}✓ Dev user created${NC} ${DIM}(id: $user_id)${NC}"
 
-  # ── Create API key using the session cookie from signup ─────────────────
   local key_response
   key_response=$(curl -s \
     -b "$COOKIE_JAR" \
@@ -418,11 +443,75 @@ seed_database() {
   return 0
 }
 
-if ! seed_database; then
+# ── 8b: Create test projects (task_lists) from dev-sh-config.json ──────────
+seed_test_projects() {
+  local project_count
+  project_count=$(python3 -c "
+import json
+d = json.load(open('$CONFIG_FILE'))
+print(len(d.get('testProjects', [])))
+" 2>/dev/null)
+
+  if [ -z "$project_count" ] || [ "$project_count" -eq 0 ]; then
+    echo -e "  ${DIM}No test projects configured in dev-sh-config.json${NC}"
+    return 0
+  fi
+
+  for i in $(seq 0 $((project_count - 1))); do
+    local name repo_url description
+    name=$(python3 -c "
+import json
+d = json.load(open('$CONFIG_FILE'))
+print(d['testProjects'][$i]['name'])
+" 2>/dev/null)
+    repo_url=$(python3 -c "
+import json
+d = json.load(open('$CONFIG_FILE'))
+print(d['testProjects'][$i].get('repositoryUrl', ''))
+" 2>/dev/null)
+    description=$(python3 -c "
+import json
+d = json.load(open('$CONFIG_FILE'))
+print(d['testProjects'][$i].get('description', ''))
+" 2>/dev/null)
+
+    local payload
+    payload=$(python3 -c "
+import json
+print(json.dumps({'name': '$name', 'description': '$description', 'repository_url': '$repo_url'}))
+" 2>/dev/null)
+
+    local create_response project_id
+    create_response=$(curl -s \
+      -b "$COOKIE_JAR" \
+      -X POST "http://localhost:$APP_PORT/api/task-lists" \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      2>/dev/null)
+
+    project_id=$(echo "$create_response" | python3 -c \
+      "import sys,json; d=json.load(sys.stdin); print(d.get('task_list',{}).get('id',''))" 2>/dev/null)
+
+    if [ -n "$project_id" ]; then
+      echo -e "  ${GREEN}✓ Project seeded${NC}: $name ${DIM}(id: $project_id)${NC}"
+      SEEDED_PROJECTS+=("$name|$repo_url|$project_id")
+    else
+      echo -e "  ${YELLOW}⚠ Failed to seed project${NC}: $name"
+      echo -e "  ${DIM}    Response: $create_response${NC}"
+    fi
+  done
+}
+
+if ! seed_user_and_key; then
   echo -e "${YELLOW}  ⚠ Seeding failed — orchestrator will be skipped${NC}"
   echo -e "${DIM}    Check: tail -f $PROJECT_DIR/.dev-dashboard.log${NC}"
   SKIP_ORCHESTRATOR=true
+else
+  seed_test_projects
 fi
+
+rm -f "$COOKIE_JAR" 2>/dev/null
+COOKIE_JAR=""
 echo ""
 
 # ============================================================================
@@ -432,6 +521,9 @@ echo ""
 echo -e "${CYAN}[9/9] Configuring orchestrator...${NC}"
 
 ORCHESTRATOR_ENV="$PROJECT_DIR/.env"
+
+# Grab GH_TOKEN from gh CLI if authenticated (needed to clone private repos)
+GH_TOKEN=$(gh auth token 2>/dev/null || echo "")
 
 if [ -n "$DEV_API_KEY" ]; then
   cat > "$ORCHESTRATOR_ENV" << EOF
@@ -443,18 +535,32 @@ if [ -n "$DEV_API_KEY" ]; then
 KANBAN_API_URL=http://localhost:$APP_PORT
 KANBAN_API_KEY=$DEV_API_KEY
 
+# ── Projects workspace ────────────────────────────────────────────────────
+# Repos are cloned to: \$PROJECTS_DIR/<project-id>/
+WORKSPACE_ROOT=$PROJECTS_DIR
+PROJECTS_DIR=$PROJECTS_DIR
+
 # ── Polling ───────────────────────────────────────────────────────────────
-# 10 seconds for local dev. Production default: 900000ms (15 minutes)
+# ${ORCHESTRATOR_POLL_INTERVAL}ms for local dev. Production default: 900000ms (15 minutes)
 POLL_INTERVAL=$ORCHESTRATOR_POLL_INTERVAL
 
 # ── Concurrency ───────────────────────────────────────────────────────────
-MAX_CONCURRENT=3
-MAX_RETRIES=3
+MAX_CONCURRENT=$MAX_CONCURRENT
+MAX_RETRIES=$MAX_RETRIES
+
+# ── GitHub token (for cloning private repos + creating PRs) ───────────────
+GH_TOKEN=$GH_TOKEN
 
 # ── Runtime ───────────────────────────────────────────────────────────────
 ENVIRONMENT=development
 EOF
   echo -e "  ${GREEN}✓ Wrote .env${NC} ${DIM}(KANBAN_API_URL=http://localhost:$APP_PORT)${NC}"
+  echo -e "  ${GREEN}✓ PROJECTS_DIR=${NC}${DIM}$PROJECTS_DIR${NC}"
+  if [ -n "$GH_TOKEN" ]; then
+    echo -e "  ${GREEN}✓ GH_TOKEN set${NC} ${DIM}(from gh CLI auth)${NC}"
+  else
+    echo -e "  ${YELLOW}⚠ GH_TOKEN not set${NC} ${DIM}(run: gh auth login)${NC}"
+  fi
 else
   echo -e "  ${YELLOW}⚠ No API key — skipping .env generation${NC}"
 fi
@@ -471,11 +577,10 @@ if [ "$SKIP_ORCHESTRATOR" = false ] && [ -n "$DEV_API_KEY" ]; then
     > "$PROJECT_DIR/.dev-orchestrator.log" 2>&1 &
   ORCHESTRATOR_PID=$!
 
-  # Give it a moment to either start or crash
   sleep 2
 
   if kill -0 "$ORCHESTRATOR_PID" 2>/dev/null; then
-    echo -e "  ${GREEN}▶ Orchestrator running${NC} ${DIM}(PID: $ORCHESTRATOR_PID, polls every 10s)${NC}"
+    echo -e "  ${GREEN}▶ Orchestrator running${NC} ${DIM}(PID: $ORCHESTRATOR_PID, polls every ${ORCHESTRATOR_POLL_INTERVAL}ms)${NC}"
   else
     echo -e "  ${YELLOW}⚠ Orchestrator exited immediately — check logs${NC}"
     echo -e "  ${DIM}    tail -f $PROJECT_DIR/.dev-orchestrator.log${NC}"
@@ -499,7 +604,7 @@ echo -e "  ${BOLD}Services${NC}"
 echo -e "  ${DIM}──────────────────────────────────────────────────────────────${NC}"
 echo -e "  Dashboard      ${GREEN}http://localhost:$APP_PORT${NC}"
 if [ -n "$ORCHESTRATOR_PID" ]; then
-  echo -e "  Orchestrator   ${GREEN}Running${NC} — polls every 10s"
+  echo -e "  Orchestrator   ${GREEN}Running${NC} — polls every ${ORCHESTRATOR_POLL_INTERVAL}ms"
 elif [ "$SKIP_ORCHESTRATOR" = true ] && ! command -v claude &>/dev/null; then
   echo -e "  Orchestrator   ${YELLOW}Not running${NC} — Claude CLI not installed"
 elif [ "$SKIP_ORCHESTRATOR" = true ]; then
@@ -522,8 +627,26 @@ if [ -n "$DEV_API_KEY" ]; then
   echo -e "  ${DIM}──────────────────────────────────────────────────────────────${NC}"
   echo -e "  Config file    ${DIM}$ORCHESTRATOR_ENV${NC}"
   echo -e "  API key        ${CYAN}$DEV_API_KEY${NC}"
-  echo -e "  Poll interval  ${CYAN}10 seconds${NC} ${DIM}(POLL_INTERVAL=10000)${NC}"
-  echo -e "  Dashboard URL  ${CYAN}http://localhost:$APP_PORT${NC}"
+  echo -e "  Poll interval  ${CYAN}${ORCHESTRATOR_POLL_INTERVAL}ms${NC}"
+  echo -e "  Projects dir   ${CYAN}$PROJECTS_DIR${NC}"
+  if [ -n "$GH_TOKEN" ]; then
+    echo -e "  GH_TOKEN       ${GREEN}set${NC} ${DIM}(repos can be cloned)${NC}"
+  else
+    echo -e "  GH_TOKEN       ${YELLOW}not set${NC} ${DIM}(run gh auth login to enable repo cloning)${NC}"
+  fi
+  echo ""
+fi
+
+# ── Test projects ────────────────────────────────────────────────────────────
+if [ ${#SEEDED_PROJECTS[@]} -gt 0 ]; then
+  echo -e "  ${BOLD}Test Projects${NC} ${DIM}(seeded in kanban — orchestrator will clone on first poll)${NC}"
+  echo -e "  ${DIM}──────────────────────────────────────────────────────────────${NC}"
+  for entry in "${SEEDED_PROJECTS[@]}"; do
+    IFS='|' read -r p_name p_repo p_id <<< "$entry"
+    echo -e "  ${CYAN}$p_name${NC}"
+    echo -e "    Repo   ${DIM}$p_repo${NC}"
+    echo -e "    Clones to  ${DIM}$PROJECTS_DIR/$p_id${NC}"
+  done
   echo ""
 fi
 
@@ -541,7 +664,9 @@ echo -e "  ${BOLD}Commands${NC}"
 echo -e "  ${DIM}──────────────────────────────────────────────────────────────${NC}"
 echo -e "  Open board         ${CYAN}open http://localhost:$APP_PORT${NC}"
 echo -e "  Start orchestrator ${CYAN}npm run orchestrator${NC}  ${DIM}(from project root)${NC}"
-echo -e "  Stop orchestrator  ${CYAN}kill $ORCHESTRATOR_PID${NC}  ${DIM}(or Ctrl+C here)${NC}"
+if [ -n "$ORCHESTRATOR_PID" ]; then
+  echo -e "  Stop orchestrator  ${CYAN}kill $ORCHESTRATOR_PID${NC}  ${DIM}(or Ctrl+C here)${NC}"
+fi
 echo -e "  DB migrations      ${CYAN}cd packages/dashboard && npm run db:migrate${NC}"
 echo -e "  Orch. logs         ${CYAN}tail -f .dev-orchestrator.log${NC}"
 echo -e "  Dashboard logs     ${CYAN}tail -f .dev-dashboard.log${NC}"
@@ -556,7 +681,6 @@ echo ""
 # WAIT — keep script alive so Ctrl+C hits our cleanup trap
 # ============================================================================
 
-# Disable the EXIT trap so cleanup only fires on SIGINT / SIGTERM
 trap - EXIT
 trap cleanup SIGINT SIGTERM
 
