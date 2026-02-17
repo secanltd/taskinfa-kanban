@@ -65,6 +65,12 @@ const FEATURE_DEFINITIONS: FeatureDefinition[] = [
         type: 'checkbox',
         description: 'Automatically move tasks to the next review column when tests pass',
       },
+      {
+        key: 'auto_merge_on_pass',
+        label: 'Auto merge PR after successful test',
+        type: 'checkbox',
+        description: 'Automatically merge the pull request when all tests pass',
+      },
     ],
   },
 ];
