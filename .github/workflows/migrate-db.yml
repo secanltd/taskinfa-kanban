@@ -30,11 +30,11 @@ jobs:
           if [[ "$TAG" == migratedb/test/* ]]; then
             echo "db_name=taskinfa-kanban-test-db" >> "$GITHUB_OUTPUT"
             echo "environment=test" >> "$GITHUB_OUTPUT"
-            echo "env_flag=--remote" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env test --remote" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == migratedb/prod/* ]]; then
             echo "db_name=taskinfa-kanban-prod-db" >> "$GITHUB_OUTPUT"
             echo "environment=production" >> "$GITHUB_OUTPUT"
-            echo "env_flag=--remote" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env production --remote" >> "$GITHUB_OUTPUT"
           else
             echo "Unknown tag: $TAG" && exit 1
           fi
