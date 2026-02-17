@@ -1,0 +1,31 @@
+{
+  "_comment": "Local development configuration. Commit changes to share settings with the team. No secrets here — secrets are generated at runtime and written to .env / .env.local (gitignored).",
+
+  "port": 3000,
+
+  "devUser": {
+    "email": "dev@taskinfa.local",
+    "password": "DevPass123!",
+    "name": "Local Dev"
+  },
+
+  "orchestrator": {
+    "pollInterval": 10000,
+    "maxConcurrent": 3,
+    "maxRetries": 3,
+    "projectsDir": "~/workspace/taskinfa-dev-projects"
+  },
+
+  "testProjects": [
+    {
+      "name": "Test Project Alpha",
+      "description": "Alpha sandbox for local orchestrator testing",
+      "repositoryUrl": "git@github.com:secanltd/test-project-alpha.git"
+    },
+    {
+      "name": "Test Project Beta",
+      "description": "Beta sandbox for local orchestrator testing",
+      "repositoryUrl": "git@github.com:secanltd/test-project-beta.git"
+    }
+  ]
+}
