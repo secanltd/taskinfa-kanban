@@ -5,6 +5,7 @@ initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  transpilePackages: ['@taskinfa/shared'],
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
