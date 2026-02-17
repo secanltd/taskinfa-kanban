@@ -543,6 +543,7 @@ export interface AiReviewConfig {
 
 export interface LocalTestingConfig {
   auto_advance_on_pass: boolean;
+  auto_merge_on_pass: boolean;
 }
 
 export type FeatureConfigMap = {
@@ -577,7 +578,7 @@ export interface UpdateFeatureToggleResponse {
 export const DEFAULT_FEATURE_CONFIGS: Record<FeatureKey, Record<string, unknown>> = {
   refinement: { auto_advance: true },
   ai_review: { auto_advance_on_approve: true, max_review_rounds: 3 },
-  local_testing: { auto_advance_on_pass: true },
+  local_testing: { auto_advance_on_pass: true, auto_merge_on_pass: false },
 };
 
 // Column definitions for the kanban board
