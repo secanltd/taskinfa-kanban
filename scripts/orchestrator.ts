@@ -19,7 +19,7 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 // ── Version (injected at build time by esbuild) ─────────────────────
@@ -214,6 +214,57 @@ function gitClone(repoUrl: string, dest: string): Promise<void> {
   });
 }
 
+function scaffoldProjectClaudeConfig(projectDir: string, projectName: string): void {
+  const rulesDir = join(projectDir, '.claude', 'rules');
+  const settingsPath = join(projectDir, '.claude', 'settings.json');
+  const rulesPath = join(rulesDir, 'taskinfa-managed.md');
+
+  mkdirSync(rulesDir, { recursive: true });
+
+  if (!existsSync(settingsPath)) {
+    writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        PreCompact: [{
+          matcher: '',
+          hooks: [{
+            type: 'command',
+            command: "[ -f .memory/context.md ] && echo '=== PROJECT MEMORY ===' && cat .memory/context.md || echo 'No project memory yet'",
+          }],
+        }],
+      },
+    }, null, 2));
+    log('INFO', 'Scaffolded .claude/settings.json', { projectDir, projectName });
+  }
+
+  if (!existsSync(rulesPath)) {
+    writeFileSync(rulesPath, `# Taskinfa Orchestrator — Project Rules
+
+This project is managed by the Taskinfa Kanban orchestrator.
+
+## Task Workflow
+- Read task via: curl $KANBAN_API_URL/api/tasks/<id> -H "Authorization: Bearer $KANBAN_API_KEY"
+- Create feature branch, commit, push, open PR
+- Post progress: POST $KANBAN_API_URL/api/tasks/<id>/comments
+- Update status: PATCH $KANBAN_API_URL/api/tasks/<id>
+- Update .memory/context.md with what was accomplished
+- NEVER mark task as done — orchestrator handles transitions from exit code
+
+## Git Rules
+- NEVER push to main
+- Branch: feat/<short-slug> or fix/<short-slug>
+- Conventional Commits; keep commits small and focused
+- If branch already exists: checkout it, don't create new one
+
+## Don'ts
+- Don't modify the taskinfa-kanban dashboard codebase
+- Don't install packages without clear reason tied to the task
+- Don't commit .env, secrets, or credentials
+- Don't skip tests if the project has a test suite
+`);
+    log('INFO', 'Scaffolded .claude/rules/taskinfa-managed.md', { projectDir, projectName });
+  }
+}
+
 async function initializeProjects(): Promise<void> {
   const { task_lists } = await apiGet<{ task_lists: TaskList[] }>('/api/task-lists');
 
@@ -230,6 +281,7 @@ async function initializeProjects(): Promise<void> {
           working_directory: projectDir,
           is_initialized: true,
         });
+        scaffoldProjectClaudeConfig(projectDir, project.name);
       } catch (e) {
         log('ERROR', 'Failed to mark project initialized', { projectId: project.id, error: String(e) });
       }
@@ -243,6 +295,7 @@ async function initializeProjects(): Promise<void> {
         working_directory: projectDir,
         is_initialized: true,
       });
+      scaffoldProjectClaudeConfig(projectDir, project.name);
       log('INFO', 'Project initialized', { projectId: project.id, dir: projectDir });
     } catch (e) {
       log('ERROR', 'Failed to initialize project', { projectId: project.id, error: String(e) });
