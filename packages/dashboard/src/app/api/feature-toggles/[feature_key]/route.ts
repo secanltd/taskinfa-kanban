@@ -14,7 +14,7 @@ import {
   validationError,
 } from '@/lib/utils';
 
-const VALID_FEATURE_KEYS: FeatureKey[] = ['refinement', 'ai_review'];
+const VALID_FEATURE_KEYS: FeatureKey[] = ['refinement', 'ai_review', 'local_testing'];
 
 // PATCH /api/feature-toggles/[feature_key] - Update toggle
 export async function PATCH(

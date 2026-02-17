@@ -167,6 +167,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
   const [enabledFeatures, setEnabledFeatures] = useState<Record<FeatureKey, boolean>>({
     refinement: false,
     ai_review: false,
+    local_testing: false,
   });
 
   const statusColumns = getStatusColumns(enabledFeatures);
@@ -177,7 +178,7 @@ export default function KanbanBoard({ initialTasks, taskLists }: KanbanBoardProp
         const res = await fetch('/api/feature-toggles');
         if (!res.ok) return;
         const data = await res.json() as { toggles: FeatureToggle[] };
-        const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false };
+        const features: Record<FeatureKey, boolean> = { refinement: false, ai_review: false, local_testing: false };
         for (const toggle of data.toggles) {
           if (toggle.feature_key in features) {
             features[toggle.feature_key as FeatureKey] = toggle.enabled;

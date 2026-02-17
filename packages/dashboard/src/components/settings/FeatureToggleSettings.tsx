@@ -53,6 +53,20 @@ const FEATURE_DEFINITIONS: FeatureDefinition[] = [
       },
     ],
   },
+  {
+    key: 'local_testing',
+    label: 'AI Local Testing',
+    description:
+      'Adds Testing and Test Failed columns. After In Progress, the orchestrator runs real browser tests via Playwright. Tasks that fail testing are moved to Test Failed for the developer to fix.',
+    configFields: [
+      {
+        key: 'auto_advance_on_pass',
+        label: 'Auto-advance on pass',
+        type: 'checkbox',
+        description: 'Automatically move tasks to the next review column when tests pass',
+      },
+    ],
+  },
 ];
 
 export default function FeatureToggleSettings() {
@@ -122,6 +136,7 @@ export default function FeatureToggleSettings() {
   const enabledFeatures: Record<FeatureKey, boolean> = {
     refinement: getToggle('refinement').enabled,
     ai_review: getToggle('ai_review').enabled,
+    local_testing: getToggle('local_testing').enabled,
   };
   const columns = getStatusColumns(enabledFeatures);
 

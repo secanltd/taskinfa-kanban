@@ -12,7 +12,7 @@ import {
   authenticationError,
 } from '@/lib/utils';
 
-const ALL_FEATURE_KEYS: FeatureKey[] = ['refinement', 'ai_review'];
+const ALL_FEATURE_KEYS: FeatureKey[] = ['refinement', 'ai_review', 'local_testing'];
 
 // GET /api/feature-toggles - List all toggles for workspace
 export async function GET(request: NextRequest) {

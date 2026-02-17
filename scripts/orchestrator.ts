@@ -362,6 +362,17 @@ function getAiReviewConfig(toggles: FeatureToggle[]): { max_review_rounds: numbe
   };
 }
 
+function isLocalTestingEnabled(toggles: FeatureToggle[]): boolean {
+  const toggle = toggles.find(t => t.feature_key === 'local_testing');
+  return toggle?.enabled ?? false;
+}
+
+function getLocalTestingConfig(toggles: FeatureToggle[]): { auto_advance_on_pass: boolean } {
+  const toggle = toggles.find(t => t.feature_key === 'local_testing');
+  const config = toggle?.config as Record<string, unknown> | undefined;
+  return { auto_advance_on_pass: (config?.auto_advance_on_pass as boolean) ?? true };
+}
+
 async function getTasksByStatus(status: string): Promise<Map<string, Task[]>> {
   const { tasks } = await apiGet<{ tasks: Task[] }>(`/api/tasks?status=${status}&limit=100`);
   const grouped = new Map<string, Task[]>();
@@ -596,7 +607,7 @@ Replace <SUMMARY_OF_WHAT_YOU_DID> with a brief summary including PR URL if you c
   ].filter(Boolean).join('\n');
 }
 
-async function startClaudeSession(projectId: string, task: Task, options?: { aiReviewEnabled?: boolean }): Promise<void> {
+async function startClaudeSession(projectId: string, task: Task, options?: { aiReviewEnabled?: boolean; localTestingEnabled?: boolean }): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -740,12 +751,16 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     try {
       const outputText = extractTextFromJsonOutput(stdout);
       if (success) {
-        const nextStatus = options?.aiReviewEnabled ? 'ai_review' : 'review';
+        const nextStatus = options?.localTestingEnabled ? 'testing'
+          : options?.aiReviewEnabled ? 'ai_review'
+          : 'review';
         await apiPatch(`/api/tasks/${task.id}`, {
           status: nextStatus,
           completion_notes: outputText.slice(-1000),
         });
-        if (nextStatus === 'ai_review') {
+        if (nextStatus === 'testing') {
+          log('INFO', 'Task moved to testing for local browser tests', { taskId: task.id });
+        } else if (nextStatus === 'ai_review') {
           log('INFO', 'Task moved to ai_review for automated PR review', { taskId: task.id });
         }
       } else {
@@ -760,8 +775,11 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     }
 
     // Post bot comment with session result
+    const nextStatusLabel = options?.localTestingEnabled ? 'testing'
+      : options?.aiReviewEnabled ? 'ai_review'
+      : 'review';
     const commentContent = success
-      ? `Session completed successfully. Task moved to ${options?.aiReviewEnabled ? 'ai_review' : 'review'}.`
+      ? `Session completed successfully. Task moved to ${nextStatusLabel}.`
       : `Session failed (exit ${code}). Error count: ${task.error_count + 1}. ${stderr.slice(-300)}`;
     await postBotComment(task.id, commentContent, success ? 'summary' : 'error');
   });
@@ -1261,6 +1279,440 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
   });
 }
 
+// ── Local testing sessions ───────────────────────────────────────────
+
+function buildTestingPrompt(task: Task, project: TaskList | null, config: { auto_advance_on_pass: boolean }, aiReviewEnabled: boolean): string {
+  const nextStatusOnPass = aiReviewEnabled ? 'ai_review' : 'review';
+
+  return `You are an automated browser testing agent. Your job is to test the feature described in this task using the Playwright MCP tools.
+
+## Task Under Test
+
+**Task ID:** ${task.id}
+**Title:** ${task.title}
+**Branch:** ${task.branch_name || '(none)'}
+**PR:** ${task.pr_url || '(none)'}
+
+**Description:**
+${task.description || '(no description)'}
+
+## Step 1: Read task history for context
+
+\`\`\`bash
+curl -s "$KANBAN_API_URL/api/tasks/${task.id}/comments?limit=20" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" | head -c 3000
+\`\`\`
+
+## Step 2: Run browser tests using Playwright MCP
+
+Use the Playwright MCP tools (mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_click, etc.) to:
+
+1. Navigate to the running local app (typically http://localhost:3000) or a PR deployment URL from the task PR
+2. Test the specific feature described in the task title and description
+3. Verify the core acceptance criteria are met
+4. Take a screenshot on failure using mcp__playwright__browser_take_screenshot
+
+Test the happy path and at least one edge case. Be thorough but focused on the task's scope.
+
+## Step 3: Post your verdict
+
+### If PASS (feature works as expected):
+
+Post a [TEST PASS] comment:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"author":"orchestrator","author_type":"bot","content":"[TEST PASS] <SUMMARY_OF_WHAT_WAS_TESTED_AND_PASSED>","comment_type":"summary"}'
+\`\`\`
+
+Then move the task to ${nextStatusOnPass}:
+
+\`\`\`bash
+curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status":"${nextStatusOnPass}","completion_notes":"Tests passed: <BRIEF_SUMMARY>"}'
+\`\`\`
+
+### If FAIL (feature is broken or incomplete):
+
+Post a detailed [TEST FAIL] comment with what was tested, what failed, and steps to reproduce:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"author":"orchestrator","author_type":"bot","content":"[TEST FAIL] ## What was tested\\n<DESCRIPTION>\\n\\n## What failed\\n<FAILURE_DESCRIPTION>\\n\\n## Steps to reproduce\\n<STEPS>\\n\\n## Screenshots\\n<SCREENSHOT_PATHS_OR_DESCRIPTIONS>","comment_type":"error"}'
+\`\`\`
+
+Then move the task to test_failed:
+
+\`\`\`bash
+curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status":"test_failed","completion_notes":"Tests failed: <BRIEF_SUMMARY>"}'
+\`\`\`
+
+## Rules
+
+- Do NOT fix any code — your job is to test and document, not to develop
+- Do NOT create branches, commits, or PRs
+- Always post either a [TEST PASS] or [TEST FAIL] comment before updating the task status
+- If the app is not running or you cannot connect, mark as FAIL with a clear explanation
+- Be specific in failure reports — the developer needs enough detail to reproduce and fix the issue
+`;
+}
+
+function buildFixTestFailurePrompt(task: Task, project: TaskList | null): string {
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const memoryPath = join(workDir, '.memory', 'context.md');
+  const claudeMdPath = join(workDir, 'CLAUDE.md');
+  const branchName = task.branch_name || generateBranchName(task);
+
+  return [
+    `Project: ${project?.name || 'Unknown'}`,
+    existsSync(claudeMdPath) ? `Read ${claudeMdPath} for project rules.` : '',
+    existsSync(memoryPath) ? `Read ${memoryPath} for current context.` : '',
+    '',
+    `Task: Fix test failures for "${task.title}"`,
+    '',
+    '## Context',
+    `This task failed automated browser testing. Read the test failure report and fix the bugs.`,
+    task.completion_notes ? `**Test failure summary:** ${task.completion_notes}` : '',
+    '',
+    '## Step 1: Read the test failure report',
+    '',
+    `\`\`\`bash
+# Get the latest [TEST FAIL] comment
+curl -s "$KANBAN_API_URL/api/tasks/${task.id}/comments?limit=20" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" | head -c 5000
+\`\`\``,
+    '',
+    '## Step 2: Fix the issues',
+    '',
+    `Checkout the existing branch and fix the bugs described in the test failure report:`,
+    '',
+    '```bash',
+    `git checkout ${branchName}`,
+    `git pull origin ${branchName}`,
+    '```',
+    '',
+    'Make the necessary fixes based on the test failure report.',
+    '',
+    '## Step 3: Push the fixes',
+    '',
+    '```bash',
+    'git add -A',
+    `git commit -m "fix: address test failures for ${task.title.replace(/"/g, '\\"')}"`,
+    `git push origin ${branchName}`,
+    '```',
+    '',
+    'Do NOT create a new branch or PR — push to the existing branch.',
+    '',
+    '## Step 4: Update the task',
+    '',
+    'After pushing fixes, move the task to testing for re-test:',
+    '',
+    '```bash',
+    `curl -s -X PATCH "$KANBAN_API_URL/api/tasks/${task.id}" \\`,
+    `  -H "Authorization: Bearer $KANBAN_API_KEY" \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -d '{"status":"testing","completion_notes":"Fixes pushed for re-test"}'`,
+    '```',
+    '',
+    'When done, update .memory/context.md with what you accomplished.',
+    '',
+    '## Post Summary Comment',
+    '',
+    '```bash',
+    `curl -s -X POST "$KANBAN_API_URL/api/tasks/${task.id}/comments" \\`,
+    '  -H "Authorization: Bearer $KANBAN_API_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d \'{"author":"orchestrator","author_type":"bot","content":"<SUMMARY>","comment_type":"summary"}\'',
+    '```',
+  ].filter(Boolean).join('\n');
+}
+
+async function startTestingSession(projectId: string, task: Task, config: { auto_advance_on_pass: boolean }, aiReviewEnabled: boolean): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping testing session', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping testing session', { projectId });
+    return;
+  }
+
+  if (!task.pr_url) {
+    log('WARN', 'Task has no PR URL, skipping testing session and moving to review', { taskId: task.id });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: aiReviewEnabled ? 'ai_review' : 'review',
+        completion_notes: 'Skipped local testing: no PR URL',
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to move task past testing', { error: String(e) });
+    }
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const systemPrompt = buildTestingPrompt(task, project, config, aiReviewEnabled);
+
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `Testing: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting testing session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Starting browser tests: ${task.title}`,
+    metadata: { session_type: 'local_testing' },
+  });
+
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
+    cwd: workDir,
+    env: {
+      ...CLEAN_ENV,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
+
+  let stdout = '';
+  let stderr = '';
+
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'Testing session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `Tests completed: ${task.title}`
+          : `Testing failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update testing session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `Tests completed: ${task.title}`
+          : `Testing failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'local_testing' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report testing session end', { error: String(e) });
+    }
+
+    // On process crash (not a test failure — the prompt handles pass/fail status updates),
+    // fall back to moving the task to review so it isn't stuck
+    if (!success) {
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, {
+          status: aiReviewEnabled ? 'ai_review' : 'review',
+          completion_notes: `Testing session crashed (exit ${code}), escalated past testing`,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to escalate task after testing session crash', { error: String(e) });
+      }
+      await postBotComment(
+        task.id,
+        `Testing session crashed (exit ${code}). Task moved to ${aiReviewEnabled ? 'ai_review' : 'review'}.`,
+        'error'
+      );
+    }
+    // On success, the prompt instructs Claude to update task status based on test results
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn testing Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
+async function startFixTestFailureSession(projectId: string, task: Task): Promise<void> {
+  if (activeSessions.size >= MAX_CONCURRENT) {
+    log('WARN', 'Concurrency limit reached, skipping fix test failure session', { projectId, maxConcurrent: MAX_CONCURRENT });
+    return;
+  }
+
+  if (activeSessions.has(projectId)) {
+    log('INFO', 'Session already active for project, skipping fix test failure session', { projectId });
+    return;
+  }
+
+  if (task.error_count >= MAX_RETRIES) {
+    log('WARN', 'Test-failed task exceeded retry limit, escalating', { taskId: task.id, errorCount: task.error_count });
+    try {
+      await apiPatch(`/api/tasks/${task.id}`, {
+        status: 'review',
+        completion_notes: `Escalated to human review after ${task.error_count} fix attempts`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to escalate test_failed task', { error: String(e) });
+    }
+    return;
+  }
+
+  const project = await getProjectInfo(projectId);
+  const workDir = project?.working_directory || WORKSPACE_ROOT;
+  const systemPrompt = buildFixTestFailurePrompt(task, project);
+
+  const { session } = await apiPost<{ session: Session }>('/api/sessions', {
+    project_id: projectId,
+    current_task_id: task.id,
+    status: 'active',
+    summary: `Fixing test failures: ${task.title}`,
+  });
+
+  const sessionId = session.id;
+
+  log('INFO', 'Starting fix test failure session', {
+    sessionId, projectId, taskId: task.id, taskTitle: task.title,
+  });
+
+  await apiPost('/api/events', {
+    event_type: 'session_start',
+    session_id: sessionId,
+    task_id: task.id,
+    message: `Fixing test failures: ${task.title}`,
+    metadata: { session_type: 'fix_test_failure' },
+  });
+
+  // Move task to in_progress while fixing
+  try {
+    await apiPatch(`/api/tasks/${task.id}`, { status: 'in_progress', assigned_to: 'orchestrator' });
+  } catch (e) {
+    log('WARN', 'Failed to claim test_failed task', { taskId: task.id });
+  }
+
+  const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const claude = spawn('claude', claudeArgs, {
+    cwd: workDir,
+    env: {
+      ...CLEAN_ENV,
+      KANBAN_API_URL: API_URL,
+      KANBAN_API_KEY: API_KEY,
+      KANBAN_SESSION_ID: sessionId,
+      KANBAN_TASK_ID: task.id,
+      GH_TOKEN: GH_TOKEN,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  claude.stdin?.end();
+  activeSessions.set(projectId, { process: claude, sessionId, taskId: task.id, startedAt: Date.now() });
+
+  let stdout = '';
+  let stderr = '';
+
+  claude.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+  claude.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+  claude.on('close', async (code) => {
+    activeSessions.delete(projectId);
+    const success = code === 0;
+
+    log(success ? 'INFO' : 'ERROR', 'Fix test failure session ended', {
+      sessionId, projectId, taskId: task.id, exitCode: code,
+    });
+
+    if (success) {
+      await saveClaudeSessionId(task, stdout);
+    }
+
+    try {
+      await apiPatch(`/api/sessions/${sessionId}`, {
+        status: success ? 'completed' : 'error',
+        summary: success
+          ? `Fixed test failures: ${task.title}`
+          : `Fix test failure failed (exit ${code}): ${stderr.slice(-500)}`,
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to update fix test failure session', { error: String(e) });
+    }
+
+    try {
+      await apiPost('/api/events', {
+        event_type: 'session_end',
+        session_id: sessionId,
+        task_id: task.id,
+        message: success
+          ? `Fixed test failures: ${task.title}`
+          : `Fix test failure failed (exit ${code}): ${stderr.slice(-200)}`,
+        metadata: { session_type: 'fix_test_failure' },
+      });
+    } catch (e) {
+      log('ERROR', 'Failed to report fix test failure session end', { error: String(e) });
+    }
+
+    // On failure, increment error count and move back to test_failed
+    if (!success) {
+      try {
+        await apiPatch(`/api/tasks/${task.id}`, {
+          status: 'test_failed',
+          error_count: task.error_count + 1,
+          assigned_to: null,
+        });
+      } catch (e) {
+        log('ERROR', 'Failed to update task after fix test failure', { error: String(e) });
+      }
+    }
+    // On success, the prompt instructs Claude to move task to testing
+
+    const fixComment = success
+      ? `Fix test failure session completed. Fixes pushed for re-test.`
+      : `Fix test failure session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+    await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
+  });
+
+  claude.on('error', (err) => {
+    log('ERROR', 'Failed to spawn fix test failure Claude process', { error: err.message, projectId });
+    activeSessions.delete(projectId);
+  });
+}
+
 // ── Refinement sessions ──────────────────────────────────────────────
 
 function buildRefinementPrompt(task: Task, project: TaskList | null, config: { auto_advance: boolean }): string {
@@ -1756,6 +2208,8 @@ async function pollCycle() {
     const aiReviewEnabled = isAiReviewEnabled(toggles);
     const aiReviewConfig = aiReviewEnabled ? getAiReviewConfig(toggles) : null;
     const refinementEnabled = isRefinementEnabled(toggles);
+    const localTestingEnabled = isLocalTestingEnabled(toggles);
+    const localTestingConfig = localTestingEnabled ? getLocalTestingConfig(toggles) : null;
 
     const activeProjectIds = await getActiveSessions();
 
@@ -1782,7 +2236,7 @@ async function pollCycle() {
       }
     }
 
-    // Priority 1: Process review_rejected tasks (highest priority — right-to-left column priority)
+    // Priority 1: Process review_rejected tasks (fix for re-review)
     if (aiReviewEnabled) {
       const rejectedTasks = await getTasksByStatus('review_rejected');
       for (const [projectId, tasks] of rejectedTasks) {
@@ -1800,7 +2254,25 @@ async function pollCycle() {
       }
     }
 
-    // Priority 2: Process ai_review tasks
+    // Priority 2: Process test_failed tasks (fix for re-test)
+    if (localTestingEnabled) {
+      const testFailedTasks = await getTasksByStatus('test_failed');
+      for (const [projectId, tasks] of testFailedTasks) {
+        if (activeProjectIds.has(projectId)) continue;
+        if (activeSessions.size >= MAX_CONCURRENT) break;
+
+        const task = sortByPriority(tasks)[0];
+        try {
+          await startFixTestFailureSession(projectId, task);
+          started++;
+          activeProjectIds.add(projectId);
+        } catch (e) {
+          log('ERROR', 'Failed to start fix test failure session', { projectId, taskId: task.id, error: String(e) });
+        }
+      }
+    }
+
+    // Priority 3: Process ai_review tasks
     if (aiReviewEnabled && aiReviewConfig) {
       const aiReviewTasks = await getTasksByStatus('ai_review');
       for (const [projectId, tasks] of aiReviewTasks) {
@@ -1818,7 +2290,25 @@ async function pollCycle() {
       }
     }
 
-    // Priority 3: Process todo tasks
+    // Priority 4: Process testing tasks (run browser tests)
+    if (localTestingEnabled && localTestingConfig) {
+      const testingTasks = await getTasksByStatus('testing');
+      for (const [projectId, tasks] of testingTasks) {
+        if (activeProjectIds.has(projectId)) continue;
+        if (activeSessions.size >= MAX_CONCURRENT) break;
+
+        const task = sortByPriority(tasks)[0];
+        try {
+          await startTestingSession(projectId, task, localTestingConfig, aiReviewEnabled);
+          started++;
+          activeProjectIds.add(projectId);
+        } catch (e) {
+          log('ERROR', 'Failed to start testing session', { projectId, taskId: task.id, error: String(e) });
+        }
+      }
+    }
+
+    // Priority 5: Process todo tasks
     const projectTasks = await getProjectTasks();
     for (const [projectId, tasks] of projectTasks) {
       if (activeProjectIds.has(projectId)) {
@@ -1840,7 +2330,7 @@ async function pollCycle() {
           continue;
         }
         try {
-          await startClaudeSession(projectId, task, { aiReviewEnabled });
+          await startClaudeSession(projectId, task, { aiReviewEnabled, localTestingEnabled });
           started++;
           activeProjectIds.add(projectId);
           sessionStarted = true;
@@ -1854,7 +2344,7 @@ async function pollCycle() {
       }
     }
 
-    // Priority 4: Process refinement tasks (lowest priority)
+    // Priority 6: Process refinement tasks (lowest priority)
     if (refinementEnabled) {
       const refinementConfig = getRefinementConfig(toggles);
       const refinementTasks = await getRefinementTasks();
