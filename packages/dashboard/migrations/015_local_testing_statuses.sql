@@ -38,7 +38,23 @@ CREATE TABLE tasks_new (
 );
 
 -- Step 2: Copy all data from old table
-INSERT INTO tasks_new SELECT * FROM tasks;
+-- Use explicit column list because parent_task_id and claude_session_id were added
+-- via ALTER TABLE (at the end) in migrations 012/013, so SELECT * column order
+-- differs from the new table's column order.
+INSERT INTO tasks_new (
+  id, workspace_id, task_list_id, parent_task_id, title, description,
+  status, priority, labels, assignee, assigned_to, "order",
+  loop_count, error_count, files_changed, completion_notes,
+  pr_url, branch_name, claude_session_id,
+  created_at, updated_at, started_at, completed_at
+)
+SELECT
+  id, workspace_id, task_list_id, parent_task_id, title, description,
+  status, priority, labels, assignee, assigned_to, "order",
+  loop_count, error_count, files_changed, completion_notes,
+  pr_url, branch_name, claude_session_id,
+  created_at, updated_at, started_at, completed_at
+FROM tasks;
 
 -- Step 3: Drop old table
 DROP TABLE tasks;
