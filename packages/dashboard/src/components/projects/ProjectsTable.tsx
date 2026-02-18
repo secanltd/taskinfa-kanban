@@ -267,7 +267,7 @@ export default function ProjectsTable({ initialProjects }: Props) {
                   <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
                     Tasks
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider sticky right-0 bg-terminal-bg">
                     Actions
                   </th>
                 </tr>
@@ -309,7 +309,7 @@ export default function ProjectsTable({ initialProjects }: Props) {
                         {project.task_count}
                       </span>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm sticky right-0 bg-terminal-bg">
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setEditingProject(project)}
