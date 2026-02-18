@@ -5,6 +5,7 @@ import { verifySessionToken } from '@/lib/auth/session';
 import LogoutButton from '@/components/auth/LogoutButton';
 import ApiKeyList from '@/components/settings/ApiKeyList';
 import FeatureToggleSettings from '@/components/settings/FeatureToggleSettings';
+import LlmProviderSettings from '@/components/settings/LlmProviderSettings';
 import type { User, Workspace } from '@taskinfa/shared';
 
 // Force dynamic rendering since we need access to D1 database and auth
@@ -137,6 +138,11 @@ export default async function SettingsPage() {
           {/* Feature Toggles Section */}
           <div className="card p-4 sm:p-6">
             <FeatureToggleSettings />
+          </div>
+
+          {/* LLM Providers Section */}
+          <div className="card p-4 sm:p-6">
+            <LlmProviderSettings />
           </div>
 
           {/* API Keys Section */}

@@ -659,3 +659,61 @@ export function getStatusColumns(enabledFeatures: Record<FeatureKey, boolean>): 
 export function getValidStatuses(enabledFeatures: Record<FeatureKey, boolean>): TaskStatus[] {
   return getStatusColumns(enabledFeatures).map(c => c.status);
 }
+
+// LLM Provider types
+
+export type LlmProvider = 'anthropic' | 'ollama' | 'lmstudio' | 'openrouter' | 'litellm' | 'custom';
+export type LlmSessionType = 'task' | 'ai_review' | 'fix_review' | 'testing' | 'fix_test_failure' | 'refinement' | 'message';
+
+export interface LlmProviderRecord {
+  id: string;
+  workspace_id: string;
+  provider: LlmProvider;
+  base_url: string | null;
+  auth_token: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LlmSessionConfig {
+  id: string;
+  workspace_id: string;
+  task_list_id: string | null;
+  session_type: LlmSessionType;
+  provider: LlmProvider;
+  model: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LlmProviderPreset {
+  label: string;
+  description: string;
+  default_base_url: string | null;
+  default_auth_placeholder: string | null;
+  needs_auth_token: boolean;
+}
+
+export const LLM_PROVIDER_PRESETS: Record<LlmProvider, LlmProviderPreset> = {
+  anthropic: { label: 'Anthropic', description: 'Default. Uses api.anthropic.com + ANTHROPIC_API_KEY from orchestrator env.', default_base_url: null, default_auth_placeholder: null, needs_auth_token: false },
+  ollama: { label: 'Ollama', description: 'Local Ollama (v0.14.0+). Recommended: qwen3-coder 32B. Needs 64k context window.', default_base_url: 'http://localhost:11434', default_auth_placeholder: null, needs_auth_token: false },
+  lmstudio: { label: 'LM Studio', description: 'Local LM Studio (v0.4.1+). Run: lms server start --port 1234', default_base_url: 'http://localhost:1234', default_auth_placeholder: 'lmstudio', needs_auth_token: false },
+  openrouter: { label: 'OpenRouter', description: '400+ cloud models. Enter your OpenRouter API key.', default_base_url: 'https://openrouter.ai/api', default_auth_placeholder: 'sk-or-...', needs_auth_token: true },
+  litellm: { label: 'LiteLLM proxy', description: 'LiteLLM gateway for teams. Routes to 100+ providers.', default_base_url: null, default_auth_placeholder: 'sk-...', needs_auth_token: true },
+  custom: { label: 'Custom endpoint', description: 'Any Anthropic-compatible endpoint (llama.cpp, etc.)', default_base_url: null, default_auth_placeholder: null, needs_auth_token: false },
+};
+
+export const LLM_SESSION_TYPE_LABELS: Record<LlmSessionType, string> = {
+  task: 'In Progress (task dev)',
+  ai_review: 'AI Review',
+  fix_review: 'Fix Review (review rejected)',
+  testing: 'Local Testing',
+  fix_test_failure: 'Fix Test Failure',
+  refinement: 'Refinement',
+  message: 'Message (async chat)',
+};
+
+export interface GetLlmConfigResponse {
+  providers: LlmProviderRecord[];
+  session_configs: LlmSessionConfig[];
+}
