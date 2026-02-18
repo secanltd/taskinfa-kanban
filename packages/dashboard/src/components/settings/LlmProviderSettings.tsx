@@ -8,6 +8,7 @@ import type {
   LlmSessionConfig,
 } from '@taskinfa/shared';
 import { LLM_PROVIDER_PRESETS, LLM_SESSION_TYPE_LABELS } from '@taskinfa/shared';
+import { fetchModelsForProvider, ANTHROPIC_MODELS } from '@/lib/llm/fetchModels';
 
 const PROVIDERS: LlmProvider[] = ['anthropic', 'ollama', 'lmstudio', 'openrouter', 'litellm', 'custom'];
 const SESSION_TYPES: LlmSessionType[] = ['task', 'ai_review', 'fix_review', 'testing', 'fix_test_failure', 'refinement', 'message'];
@@ -37,6 +38,11 @@ export default function LlmProviderSettings() {
   const [sessionForms, setSessionForms] = useState<Record<string, SessionFormState>>({});
   const [sessionSaving, setSessionSaving] = useState<Set<LlmSessionType>>(new Set());
   const [sessionSuccess, setSessionSuccess] = useState<Set<LlmSessionType>>(new Set());
+
+  // Model lists per provider (cached after first fetch)
+  const [modelLists, setModelLists] = useState<Record<string, string[]>>({ anthropic: ANTHROPIC_MODELS });
+  const [modelsFetching, setModelsFetching] = useState<Set<string>>(new Set());
+  const [modelsErrors, setModelsErrors] = useState<Record<string, string>>({});
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -83,6 +89,38 @@ export default function LlmProviderSettings() {
     fetchConfig();
   }, [fetchConfig]);
 
+  // Auto-fetch models for a provider using current form values
+  const loadModels = useCallback(async (provider: LlmProvider, baseUrl: string, authToken: string) => {
+    if (provider === 'anthropic') {
+      setModelLists((prev) => ({ ...prev, anthropic: ANTHROPIC_MODELS }));
+      return;
+    }
+    if (provider === 'custom') return;
+    if (modelsFetching.has(provider)) return;
+
+    setModelsFetching((prev) => new Set(prev).add(provider));
+    setModelsErrors((prev) => { const n = { ...prev }; delete n[provider]; return n; });
+
+    try {
+      const models = await fetchModelsForProvider(provider, baseUrl, authToken);
+      setModelLists((prev) => ({ ...prev, [provider]: models }));
+    } catch (e) {
+      setModelsErrors((prev) => ({ ...prev, [provider]: String(e) }));
+    } finally {
+      setModelsFetching((prev) => { const n = new Set(prev); n.delete(provider); return n; });
+    }
+  }, [modelsFetching]);
+
+  // When a session row's provider changes, auto-fetch that provider's models
+  function onSessionProviderChange(sessionType: LlmSessionType, provider: LlmProvider) {
+    updateSessionForm(sessionType, 'provider', provider);
+    updateSessionForm(sessionType, 'model', '');
+    if (provider !== 'custom' && !modelLists[provider]) {
+      const form = providerForms[provider];
+      loadModels(provider, form?.base_url ?? '', form?.auth_token ?? '');
+    }
+  }
+
   async function saveProvider(provider: LlmProvider) {
     const form = providerForms[provider];
     if (!form) return;
@@ -108,6 +146,8 @@ export default function LlmProviderSettings() {
         return [...filtered, data.provider];
       });
       setProviderSuccess((prev) => new Set(prev).add(provider));
+      // Invalidate model cache so next fetch uses new credentials
+      setModelLists((prev) => { const n = { ...prev }; delete n[provider]; return n; });
       setTimeout(() => {
         setProviderSuccess((prev) => { const next = new Set(prev); next.delete(provider); return next; });
       }, 2000);
@@ -275,6 +315,11 @@ export default function LlmProviderSettings() {
           const form = sessionForms[sessionType];
           const isSaving = sessionSaving.has(sessionType);
           const isSuccess = sessionSuccess.has(sessionType);
+          const selectedProvider = form?.provider ?? 'anthropic';
+          const models = modelLists[selectedProvider] ?? [];
+          const isFetching = modelsFetching.has(selectedProvider);
+          const fetchError = modelsErrors[selectedProvider];
+          const datalistId = `models-global-${sessionType}`;
 
           return (
             <div
@@ -290,8 +335,8 @@ export default function LlmProviderSettings() {
                 <div className="flex-1 min-w-0 w-full sm:w-auto">
                   <label className="block text-xs text-terminal-muted mb-1">Provider</label>
                   <select
-                    value={form?.provider ?? 'anthropic'}
-                    onChange={(e) => updateSessionForm(sessionType, 'provider', e.target.value)}
+                    value={selectedProvider}
+                    onChange={(e) => onSessionProviderChange(sessionType, e.target.value as LlmProvider)}
                     className="input-field w-full text-sm"
                     disabled={isSaving}
                   >
@@ -303,15 +348,45 @@ export default function LlmProviderSettings() {
                   </select>
                 </div>
                 <div className="flex-1 min-w-0 w-full sm:w-auto">
-                  <label className="block text-xs text-terminal-muted mb-1">Model</label>
-                  <input
-                    type="text"
-                    value={form?.model ?? ''}
-                    onChange={(e) => updateSessionForm(sessionType, 'model', e.target.value)}
-                    placeholder="default"
-                    className="input-field w-full text-sm"
-                    disabled={isSaving}
-                  />
+                  <label className="block text-xs text-terminal-muted mb-1 flex items-center gap-1">
+                    Model
+                    {isFetching && (
+                      <span className="inline-block animate-spin rounded-full h-3 w-3 border-b border-terminal-muted ml-1" />
+                    )}
+                    {fetchError && !isFetching && (
+                      <span className="text-terminal-red text-xs ml-1" title={fetchError}>⚠</span>
+                    )}
+                  </label>
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      list={datalistId}
+                      value={form?.model ?? ''}
+                      onChange={(e) => updateSessionForm(sessionType, 'model', e.target.value)}
+                      placeholder={isFetching ? 'Loading...' : selectedProvider === 'custom' ? 'model-name' : 'default'}
+                      className="input-field w-full text-sm"
+                      disabled={isSaving}
+                    />
+                    {selectedProvider !== 'anthropic' && selectedProvider !== 'custom' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pf = providerForms[selectedProvider];
+                          loadModels(selectedProvider, pf?.base_url ?? '', pf?.auth_token ?? '');
+                        }}
+                        disabled={isFetching}
+                        title="Reload model list"
+                        className="flex-shrink-0 px-2 text-terminal-muted hover:text-terminal-text border border-terminal-border rounded transition-colors disabled:opacity-40"
+                      >
+                        ↺
+                      </button>
+                    )}
+                  </div>
+                  {models.length > 0 && (
+                    <datalist id={datalistId}>
+                      {models.map((m) => <option key={m} value={m} />)}
+                    </datalist>
+                  )}
                 </div>
                 <button
                   onClick={() => saveSessionConfig(sessionType)}
