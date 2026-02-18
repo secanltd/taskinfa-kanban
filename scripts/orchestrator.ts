@@ -690,6 +690,16 @@ IMPORTANT: You MUST create the branch, commit, push, and create the PR. The PR U
     'Do the task. When done, update .memory/context.md with what you accomplished.',
     gitWorkflow,
     `
+## API Connectivity Check
+
+Before starting any work, verify the kanban API is reachable:
+
+\`\`\`bash
+curl -sf "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID" -H "Authorization: Bearer $KANBAN_API_KEY" -o /dev/null && echo "API OK" || echo "API UNREACHABLE"
+\`\`\`
+
+If the API is unreachable, post an error comment (see below) and exit immediately — do not proceed with work that cannot be reported back.
+
 ## Post Summary Comment
 
 When you finish (success or failure), post a summary comment to the task:
@@ -702,6 +712,19 @@ curl -s -X POST "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" \\
 \`\`\`
 
 Replace <SUMMARY_OF_WHAT_YOU_DID> with a brief summary including PR URL if you created one.
+
+## If You Are Blocked or Cannot Proceed
+
+If at any point you cannot continue — missing permissions, unresolvable conflict, unclear requirements, repeated tool failures, or any other blocker — **do not silently fail**. Post an error comment explaining the specific reason before exiting:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"author":"orchestrator","author_type":"bot","content":"BLOCKED: <EXACT_REASON_YOU_CANNOT_PROCEED>","comment_type":"error"}'
+\`\`\`
+
+Then exit with a non-zero code so the orchestrator knows the session failed.
 `,
   ].filter(Boolean).join('\n');
 }
@@ -2072,14 +2095,20 @@ async function checkStuckSessions(): Promise<void> {
       log('ERROR', 'Failed to update stuck session', { error: String(e) });
     }
 
-    // Reset task to todo with incremented error_count
+    // Reset task to todo with incremented error_count and post a comment explaining why
     try {
       const { task } = await apiGet<{ task: Task }>(`/api/tasks/${entry.taskId}`);
+      const newErrorCount = (task.error_count || 0) + 1;
       await apiPatch(`/api/tasks/${entry.taskId}`, {
         status: 'todo',
         assigned_to: null,
-        error_count: (task.error_count || 0) + 1,
+        error_count: newErrorCount,
       });
+      await postBotComment(
+        entry.taskId,
+        `Session killed by orchestrator: ${reason} after ${ageMins} minutes. Task reset to todo. Error count: ${newErrorCount}.`,
+        'error'
+      );
     } catch (e) {
       log('ERROR', 'Failed to reset stuck task', { error: String(e) });
     }
