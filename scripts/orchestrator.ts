@@ -401,6 +401,49 @@ async function getFeatureToggles(): Promise<FeatureToggle[]> {
   }
 }
 
+interface LlmData {
+  providers: Array<{ provider: string; base_url: string | null; auth_token: string | null }>;
+  session_configs: Array<{ task_list_id: string | null; session_type: string; provider: string; model: string | null }>;
+}
+
+async function getLlmConfig(): Promise<LlmData | null> {
+  try {
+    return await apiGet<LlmData>('/api/llm-config');
+  } catch (e) {
+    log('WARN', 'Failed to fetch LLM config, using default Anthropic', { error: String(e) });
+    return null;
+  }
+}
+
+function resolveSessionEnv(
+  llmData: LlmData | null,
+  sessionType: string,
+  projectId: string
+): Record<string, string> {
+  if (!llmData) return {};
+
+  // Find effective session config: project-level → global → nothing (default Anthropic)
+  const cfg =
+    llmData.session_configs.find(c => c.task_list_id === projectId && c.session_type === sessionType) ??
+    llmData.session_configs.find(c => c.task_list_id === null && c.session_type === sessionType);
+
+  if (!cfg || cfg.provider === 'anthropic') return {};
+
+  const providerRecord = llmData.providers.find(p => p.provider === cfg.provider);
+  const env: Record<string, string> = {};
+
+  if (providerRecord?.base_url) {
+    env.ANTHROPIC_BASE_URL = providerRecord.base_url;
+    env.ANTHROPIC_API_KEY = '';  // prevent key conflict
+  }
+  const token = providerRecord?.auth_token ?? cfg.provider;  // fallback: provider name as placeholder
+  env.ANTHROPIC_AUTH_TOKEN = token;
+
+  if (cfg.model) env.ANTHROPIC_MODEL = cfg.model;
+
+  return env;
+}
+
 function isAiReviewEnabled(toggles: FeatureToggle[]): boolean {
   const toggle = toggles.find(t => t.feature_key === 'ai_review');
   return toggle?.enabled ?? false;
@@ -647,6 +690,16 @@ IMPORTANT: You MUST create the branch, commit, push, and create the PR. The PR U
     'Do the task. When done, update .memory/context.md with what you accomplished.',
     gitWorkflow,
     `
+## API Connectivity Check
+
+Before starting any work, verify the kanban API is reachable:
+
+\`\`\`bash
+curl -sf "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID" -H "Authorization: Bearer $KANBAN_API_KEY" -o /dev/null && echo "API OK" || echo "API UNREACHABLE"
+\`\`\`
+
+If the API is unreachable, post an error comment (see below) and exit immediately — do not proceed with work that cannot be reported back.
+
 ## Post Summary Comment
 
 When you finish (success or failure), post a summary comment to the task:
@@ -659,11 +712,24 @@ curl -s -X POST "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" \\
 \`\`\`
 
 Replace <SUMMARY_OF_WHAT_YOU_DID> with a brief summary including PR URL if you created one.
+
+## If You Are Blocked or Cannot Proceed
+
+If at any point you cannot continue — missing permissions, unresolvable conflict, unclear requirements, repeated tool failures, or any other blocker — **do not silently fail**. Post an error comment explaining the specific reason before exiting:
+
+\`\`\`bash
+curl -s -X POST "$KANBAN_API_URL/api/tasks/$KANBAN_TASK_ID/comments" \\
+  -H "Authorization: Bearer $KANBAN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"author":"orchestrator","author_type":"bot","content":"BLOCKED: <EXACT_REASON_YOU_CANNOT_PROCEED>","comment_type":"error"}'
+\`\`\`
+
+Then exit with a non-zero code so the orchestrator knows the session failed.
 `,
   ].filter(Boolean).join('\n');
 }
 
-async function startClaudeSession(projectId: string, task: Task, options?: { aiReviewEnabled?: boolean; localTestingEnabled?: boolean }): Promise<void> {
+async function startClaudeSession(projectId: string, task: Task, options?: { aiReviewEnabled?: boolean; localTestingEnabled?: boolean }, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -719,10 +785,12 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
   // Spawn Claude Code (skip-permissions needed for non-interactive sessions
   // that must run bash commands like curl for progress reporting)
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'task', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -758,7 +826,7 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
       task.claude_session_id = null;
       try {
         await apiPatch(`/api/tasks/${task.id}`, { claude_session_id: null });
-        await startClaudeSession(projectId, task, options);
+        await startClaudeSession(projectId, task, options, llmData);
         return;
       } catch (retryErr) {
         log('ERROR', 'Retry without resume also failed', { error: String(retryErr) });
@@ -834,9 +902,10 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     const nextStatusLabel = options?.aiReviewEnabled ? 'ai_review'
       : options?.localTestingEnabled ? 'testing'
       : 'review';
+    const errorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const commentContent = success
       ? `Session completed successfully. Task moved to ${nextStatusLabel}.`
-      : `Session failed (exit ${code}). Error count: ${task.error_count + 1}. ${stderr.slice(-300)}`;
+      : `Session failed (exit ${code}). Error count: ${task.error_count + 1}.${errorDetail ? `\n\n\`\`\`\n${errorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, commentContent, success ? 'summary' : 'error');
   });
 
@@ -1039,7 +1108,7 @@ gh api repos/${repoSlug}/pulls/${prNumber}/comments --jq '.[] | "\\(.path):\\(.l
   ].filter(Boolean).join('\n');
 }
 
-async function startAiReviewSession(projectId: string, task: Task, config: { max_review_rounds: number; auto_advance_on_approve: boolean }, localTestingEnabled: boolean): Promise<void> {
+async function startAiReviewSession(projectId: string, task: Task, config: { max_review_rounds: number; auto_advance_on_approve: boolean }, localTestingEnabled: boolean, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping AI review', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1105,10 +1174,12 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
   });
 
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'ai_review', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1191,7 +1262,7 @@ async function startAiReviewSession(projectId: string, task: Task, config: { max
   });
 }
 
-async function startFixReviewSession(projectId: string, task: Task): Promise<void> {
+async function startFixReviewSession(projectId: string, task: Task, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping fix review', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1248,10 +1319,12 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
   }
 
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'fix_review', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1323,9 +1396,10 @@ async function startFixReviewSession(projectId: string, task: Task): Promise<voi
     // On success, the prompt instructs Claude to move task to ai_review
 
     // Post bot comment with fix review result
+    const fixReviewErrorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const fixComment = success
       ? `Fix review session completed. Fixes pushed for re-review.`
-      : `Fix review session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+      : `Fix review session failed (exit ${code}). Error count: ${task.error_count + 1}.${fixReviewErrorDetail ? `\n\n\`\`\`\n${fixReviewErrorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
   });
 
@@ -1498,7 +1572,7 @@ curl -s "$KANBAN_API_URL/api/tasks/${task.id}/comments?limit=20" \\
   ].filter(Boolean).join('\n');
 }
 
-async function startTestingSession(projectId: string, task: Task, config: { auto_advance_on_pass: boolean; auto_merge_on_pass: boolean }): Promise<void> {
+async function startTestingSession(projectId: string, task: Task, config: { auto_advance_on_pass: boolean; auto_merge_on_pass: boolean }, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping testing session', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1548,10 +1622,12 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
   });
 
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'testing', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1633,7 +1709,7 @@ async function startTestingSession(projectId: string, task: Task, config: { auto
   });
 }
 
-async function startFixTestFailureSession(projectId: string, task: Task): Promise<void> {
+async function startFixTestFailureSession(projectId: string, task: Task, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping fix test failure session', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1690,10 +1766,12 @@ async function startFixTestFailureSession(projectId: string, task: Task): Promis
   }
 
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'fix_test_failure', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -1763,9 +1841,10 @@ async function startFixTestFailureSession(projectId: string, task: Task): Promis
     }
     // On success, the prompt instructs Claude to move task to testing
 
+    const fixTestErrorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const fixComment = success
       ? `Fix test failure session completed. Fixes pushed for re-test.`
-      : `Fix test failure session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+      : `Fix test failure session failed (exit ${code}). Error count: ${task.error_count + 1}.${fixTestErrorDetail ? `\n\n\`\`\`\n${fixTestErrorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
   });
 
@@ -1835,7 +1914,7 @@ curl -s -X POST "$KANBAN_API_URL/api/events" \\
 `;
 }
 
-async function startRefinementSession(projectId: string, task: Task, config: { auto_advance: boolean }): Promise<void> {
+async function startRefinementSession(projectId: string, task: Task, config: { auto_advance: boolean }, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping refinement', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -1887,10 +1966,12 @@ async function startRefinementSession(projectId: string, task: Task, config: { a
 
   // Spawn Claude with restricted permissions — no GH_TOKEN, only API access
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'refinement', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -2014,14 +2095,20 @@ async function checkStuckSessions(): Promise<void> {
       log('ERROR', 'Failed to update stuck session', { error: String(e) });
     }
 
-    // Reset task to todo with incremented error_count
+    // Reset task to todo with incremented error_count and post a comment explaining why
     try {
       const { task } = await apiGet<{ task: Task }>(`/api/tasks/${entry.taskId}`);
+      const newErrorCount = (task.error_count || 0) + 1;
       await apiPatch(`/api/tasks/${entry.taskId}`, {
         status: 'todo',
         assigned_to: null,
-        error_count: (task.error_count || 0) + 1,
+        error_count: newErrorCount,
       });
+      await postBotComment(
+        entry.taskId,
+        `Session killed by orchestrator: ${reason} after ${ageMins} minutes. Task reset to todo. Error count: ${newErrorCount}.`,
+        'error'
+      );
     } catch (e) {
       log('ERROR', 'Failed to reset stuck task', { error: String(e) });
     }
@@ -2115,7 +2202,7 @@ function buildMessageSessionPrompt(task: Task, project: TaskList | null, comment
   ].filter(Boolean).join('\n');
 }
 
-async function startMessageSession(projectId: string, task: Task): Promise<void> {
+async function startMessageSession(projectId: string, task: Task, llmData?: LlmData | null): Promise<void> {
   if (activeSessions.size >= MAX_CONCURRENT) {
     log('WARN', 'Concurrency limit reached, skipping message session', { projectId, maxConcurrent: MAX_CONCURRENT });
     return;
@@ -2167,10 +2254,12 @@ async function startMessageSession(projectId: string, task: Task): Promise<void>
 
   // Use --resume if we have a claude_session_id (full AI memory of previous work)
   const claudeArgs = buildClaudeArgs(task, systemPrompt);
+  const sessionEnv = resolveSessionEnv(llmData ?? null, 'message', projectId);
   const claude = spawn('claude', claudeArgs, {
     cwd: workDir,
     env: {
       ...CLEAN_ENV,
+      ...sessionEnv,
       KANBAN_API_URL: API_URL,
       KANBAN_API_KEY: API_KEY,
       KANBAN_SESSION_ID: sessionId,
@@ -2265,8 +2354,9 @@ async function pollCycle() {
     // Initialize any new projects (clone repos) before processing tasks
     await initializeProjects();
 
-    // Fetch feature toggles
+    // Fetch feature toggles and LLM config
     const toggles = await getFeatureToggles();
+    const llmData = await getLlmConfig();
     const aiReviewEnabled = isAiReviewEnabled(toggles);
     const aiReviewConfig = aiReviewEnabled ? getAiReviewConfig(toggles) : null;
     const refinementEnabled = isRefinementEnabled(toggles);
@@ -2290,7 +2380,7 @@ async function pollCycle() {
       if (activeSessions.size >= MAX_CONCURRENT) break;
 
       try {
-        await startMessageSession(projectId, task);
+        await startMessageSession(projectId, task, llmData);
         started++;
         activeProjectIds.add(projectId);
       } catch (e) {
@@ -2307,7 +2397,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startFixReviewSession(projectId, task);
+          await startFixReviewSession(projectId, task, llmData);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
@@ -2325,7 +2415,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startFixTestFailureSession(projectId, task);
+          await startFixTestFailureSession(projectId, task, llmData);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
@@ -2343,7 +2433,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startAiReviewSession(projectId, task, aiReviewConfig, localTestingEnabled);
+          await startAiReviewSession(projectId, task, aiReviewConfig, localTestingEnabled, llmData);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
@@ -2361,7 +2451,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startTestingSession(projectId, task, localTestingConfig);
+          await startTestingSession(projectId, task, localTestingConfig, llmData);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {
@@ -2392,7 +2482,7 @@ async function pollCycle() {
           continue;
         }
         try {
-          await startClaudeSession(projectId, task, { aiReviewEnabled, localTestingEnabled });
+          await startClaudeSession(projectId, task, { aiReviewEnabled, localTestingEnabled }, llmData);
           started++;
           activeProjectIds.add(projectId);
           sessionStarted = true;
@@ -2424,7 +2514,7 @@ async function pollCycle() {
 
         const task = sortByPriority(tasks)[0];
         try {
-          await startRefinementSession(projectId, task, refinementConfig);
+          await startRefinementSession(projectId, task, refinementConfig, llmData);
           started++;
           activeProjectIds.add(projectId);
         } catch (e) {

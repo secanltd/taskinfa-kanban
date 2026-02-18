@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { TaskList } from '@taskinfa/shared';
+import ProjectEditModal from './ProjectEditModal';
 
 interface ProjectWithCount extends TaskList {
   task_count: number;
@@ -19,6 +20,7 @@ export default function ProjectsTable({ initialProjects }: Props) {
     description: '',
     repository_url: '',
   });
+  const [editingProject, setEditingProject] = useState<ProjectWithCount | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -221,14 +223,25 @@ export default function ProjectsTable({ initialProjects }: Props) {
                   <code className="text-xs bg-terminal-surface px-2 py-0.5 rounded text-terminal-muted font-mono truncate max-w-[200px]">
                     {project.id}
                   </code>
-                  <button
-                    onClick={() => handleDelete(project.id)}
-                    className="text-xs text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation px-2 py-1"
-                    disabled={loading || project.task_count > 0}
-                    title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setEditingProject(project)}
+                      className="text-terminal-muted hover:text-terminal-text transition-colors touch-manipulation p-1"
+                      title="Edit project"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(project.id)}
+                      className="text-xs text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation px-2 py-1"
+                      disabled={loading || project.task_count > 0}
+                      title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -254,7 +267,7 @@ export default function ProjectsTable({ initialProjects }: Props) {
                   <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
                     Tasks
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-terminal-muted uppercase tracking-wider sticky right-0 bg-terminal-bg">
                     Actions
                   </th>
                 </tr>
@@ -296,15 +309,26 @@ export default function ProjectsTable({ initialProjects }: Props) {
                         {project.task_count}
                       </span>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => handleDelete(project.id)}
-                        className="text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={loading || project.task_count > 0}
-                        title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
-                      >
-                        Delete
-                      </button>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm sticky right-0 bg-terminal-bg">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setEditingProject(project)}
+                          className="text-terminal-muted hover:text-terminal-text transition-colors"
+                          title="Edit project"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(project.id)}
+                          className="text-terminal-muted hover:text-terminal-red transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={loading || project.task_count > 0}
+                          title={project.task_count > 0 ? 'Cannot delete project with tasks' : 'Delete project'}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -312,6 +336,21 @@ export default function ProjectsTable({ initialProjects }: Props) {
             </table>
           </div>
         </>
+      )}
+
+      {editingProject && (
+        <ProjectEditModal
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onUpdated={(updated) => {
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id === updated.id ? { ...p, ...updated } : p
+              )
+            );
+            setEditingProject(null);
+          }}
+        />
       )}
     </div>
   );
