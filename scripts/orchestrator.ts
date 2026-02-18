@@ -879,9 +879,10 @@ async function startClaudeSession(projectId: string, task: Task, options?: { aiR
     const nextStatusLabel = options?.aiReviewEnabled ? 'ai_review'
       : options?.localTestingEnabled ? 'testing'
       : 'review';
+    const errorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const commentContent = success
       ? `Session completed successfully. Task moved to ${nextStatusLabel}.`
-      : `Session failed (exit ${code}). Error count: ${task.error_count + 1}. ${stderr.slice(-300)}`;
+      : `Session failed (exit ${code}). Error count: ${task.error_count + 1}.${errorDetail ? `\n\n\`\`\`\n${errorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, commentContent, success ? 'summary' : 'error');
   });
 
@@ -1372,9 +1373,10 @@ async function startFixReviewSession(projectId: string, task: Task, llmData?: Ll
     // On success, the prompt instructs Claude to move task to ai_review
 
     // Post bot comment with fix review result
+    const fixReviewErrorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const fixComment = success
       ? `Fix review session completed. Fixes pushed for re-review.`
-      : `Fix review session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+      : `Fix review session failed (exit ${code}). Error count: ${task.error_count + 1}.${fixReviewErrorDetail ? `\n\n\`\`\`\n${fixReviewErrorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
   });
 
@@ -1816,9 +1818,10 @@ async function startFixTestFailureSession(projectId: string, task: Task, llmData
     }
     // On success, the prompt instructs Claude to move task to testing
 
+    const fixTestErrorDetail = stderr.trim().slice(-500) || stdout.trim().slice(-500);
     const fixComment = success
       ? `Fix test failure session completed. Fixes pushed for re-test.`
-      : `Fix test failure session failed (exit ${code}). Error count: ${task.error_count + 1}.`;
+      : `Fix test failure session failed (exit ${code}). Error count: ${task.error_count + 1}.${fixTestErrorDetail ? `\n\n\`\`\`\n${fixTestErrorDetail}\n\`\`\`` : ''}`;
     await postBotComment(task.id, fixComment, success ? 'summary' : 'error');
   });
 
